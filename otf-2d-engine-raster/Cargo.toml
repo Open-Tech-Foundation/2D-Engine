@@ -1,0 +1,18 @@
+[package]
+name = "otf-2d-engine-raster"
+description = "Flatten, bin, strip and fine-raster stages for the 2D-Engine vector graphics engine."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+otf-2d-engine-geom.workspace = true
+otf-2d-engine-color.workspace = true
+otf-2d-engine-scene.workspace = true
+smallvec = { workspace = true, features = ["union", "const_generics"] }
+
+[dev-dependencies]
+static_assertions.workspace = true

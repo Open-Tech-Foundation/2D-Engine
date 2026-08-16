@@ -1,0 +1,20 @@
+[package]
+name = "otf-2d-engine-color"
+description = "Colour spaces and blend math for the 2D-Engine vector graphics engine."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[features]
+default = ["std"]
+std = []
+libm = ["dep:libm"]
+
+[dependencies]
+libm = { workspace = true, optional = true }
+
+[dev-dependencies]
+static_assertions.workspace = true

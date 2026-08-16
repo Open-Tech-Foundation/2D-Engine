@@ -1,0 +1,16 @@
+[package]
+name = "otf-2d-engine-cache"
+description = "Damage tracking, tile cache and glyph cache for the 2D-Engine vector graphics engine."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+otf-2d-engine-geom.workspace = true
+otf-2d-engine-color.workspace = true
+otf-2d-engine-scene.workspace = true
+otf-2d-engine-raster.workspace = true
+rustc-hash.workspace = true

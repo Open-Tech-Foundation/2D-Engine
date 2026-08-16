@@ -1,0 +1,44 @@
+[workspace]
+resolver = "3"
+members = [
+    "otf-2d-engine-geom",
+    "otf-2d-engine-color",
+    "otf-2d-engine-scene",
+    "otf-2d-engine-raster",
+    "otf-2d-engine-cpu",
+    "otf-2d-engine-cache",
+    "otf-2d-engine-text",
+    "otf-2d-engine",
+]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.93"
+license = "Apache-2.0"
+repository = "https://github.com/open-tech-foundation/2D-Engine"
+authors = ["Open Tech Foundation"]
+
+[workspace.dependencies]
+otf-2d-engine-geom = { path = "otf-2d-engine-geom", version = "0.0.0", default-features = false }
+otf-2d-engine-color = { path = "otf-2d-engine-color", version = "0.0.0", default-features = false }
+otf-2d-engine-scene = { path = "otf-2d-engine-scene", version = "0.0.0", default-features = false }
+otf-2d-engine-raster = { path = "otf-2d-engine-raster", version = "0.0.0" }
+otf-2d-engine-cpu = { path = "otf-2d-engine-cpu", version = "0.0.0" }
+otf-2d-engine-cache = { path = "otf-2d-engine-cache", version = "0.0.0" }
+
+bytemuck = { version = "1", default-features = false }
+smallvec = { version = "1", default-features = false }
+rustc-hash = { version = "2", default-features = false }
+libm = { version = "0.2", default-features = false }
+static_assertions = "1"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+debug = true
+
+[profile.bench]
+lto = "thin"
+codegen-units = 1
+debug = true
