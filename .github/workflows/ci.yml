@@ -1,9 +1,13 @@
 name: CI
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    # Nightly, for the exhaustive and soak tests marked #[ignore].
+    - cron: '0 3 * * *'
 
 env:
   CARGO_TERM_COLOR: always
@@ -50,3 +54,15 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Compare against the tracked baseline
         run: ./ci/check.sh bench
+
+  exhaustive:
+    name: exhaustive tests
+    # Doc 03 §8 schedules the exhaustive and soak suites nightly rather than
+    # per-commit; they are marked #[ignore] so they never run by accident.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup toolchain install stable --profile minimal
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace --release -- --ignored

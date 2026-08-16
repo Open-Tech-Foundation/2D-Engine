@@ -57,3 +57,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `PathShape` for the stage 4 fast path; radii are clamped CSS-style so a
   rounded rect's bounds are exactly the rect it was built from. Builds
   `no_std` with `libm`.
+- **T1.2** — `otf-2d-engine-color`: `Color` as linear-light premultiplied
+  `f32` carrying its own `ColorSpace`, per Doc 01 §7. sRGB transfer functions
+  in analytic and 8-bit table form, the table being what makes
+  `srgb8 -> linear -> srgb8` exact for all 256³ colours (exhaustive test,
+  `#[ignore]`d and run nightly). Out-of-range components are mirrored rather
+  than clamped, so wide-gamut conversions keep the information an HDR target
+  can use. `ColorSpace` conversion goes through CIE XYZ D65 with `from_xyz`
+  inverted from `to_xyz` rather than transcribed. `BlendMode` is
+  `#[non_exhaustive]` with only the `SrcOver` v1 supports, so M6 can add the
+  Porter-Duff set without a breaking change. Builds `no_std` with `libm`.
