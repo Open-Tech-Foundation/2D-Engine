@@ -23,3 +23,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   for violations of the hard invariants in `AGENTS.md` (I-1 through I-4, plus
   the supersampling, polyline and fixed-point gates); opt-outs require a
   `// ci-allow:` marker. A GitHub Actions matrix runs it on x86-64 and aarch64.
+- **T0.3** — Golden-image harness in the test-only `otf-2d-engine-testing`
+  crate. Each case renders twice, with `bypass_caches` false and true, and the
+  two must be byte-equal before the reference is even consulted, so an I-6
+  violation is never misreported as a rasterizer bug. Comparison against the
+  stored reference PNG is exact; on failure the harness writes actual,
+  expected and a magenta diff overlay to `target/golden-failures/`.
+  `OTF_BLESS=1` rewrites references and prints a banner restating that
+  `AGENTS.md` requires a written justification for doing so. Harness
+  self-tests cover every failure mode, including a deliberately corrupted
+  one-pixel fixture, so the proof that it fails loudly is permanent rather
+  than a one-off manual check. The corpus is registered explicitly in
+  `tests/golden.rs` and is currently empty and passing.

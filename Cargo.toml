@@ -9,6 +9,7 @@ members = [
     "otf-2d-engine-cache",
     "otf-2d-engine-text",
     "otf-2d-engine",
+    "otf-2d-engine-testing",
 ]
 
 [workspace.package]
@@ -32,6 +33,13 @@ smallvec = { version = "1", default-features = false }
 rustc-hash = { version = "2", default-features = false }
 libm = { version = "0.2", default-features = false }
 static_assertions = "1"
+
+# Test-only. Not part of the closed v1 dependency list in Doc 02 §1, which
+# governs what the shipped crates link against.
+otf-2d-engine-testing = { path = "otf-2d-engine-testing" }
+png = "0.18"
+criterion = { version = "0.7", default-features = false }
+proptest = "1"
 
 [profile.release]
 lto = "thin"

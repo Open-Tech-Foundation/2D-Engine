@@ -1,0 +1,13 @@
+[package]
+name = "otf-2d-engine-testing"
+description = "Test harnesses for 2D-Engine: golden images, allocation counting, benchmark reporting."
+publish = false
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+png.workspace = true
