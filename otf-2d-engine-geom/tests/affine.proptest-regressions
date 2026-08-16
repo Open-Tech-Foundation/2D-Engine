@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc a7eecddc506325f26311a8f181693d389ba76c04b4af1d0c6e2e0d605bee6b3d # shrinks to m = Affine([-959.9468733242494, -393.6735276948661, 710.3995055057894, 291.609666570286, 0.0, 0.0])

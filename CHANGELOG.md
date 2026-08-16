@@ -45,3 +45,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   justify-it-in-the-commit banner the golden harness uses. The corpus is
   currently empty and the run emits the JSON, which is the T0.4 gate.
   `ci/check.sh` gained a `bench` step so this runs on every commit.
+- **T1.1** — `otf-2d-engine-geom`: `Point`, `Vec2`, `Size`, `Rect`,
+  `RectRadii`, `Affine`, `PathEl`, `PathSeg`, `PathVerb`, `Path` and
+  `PathBuilder`. `f64` throughout the public surface per Doc 02 §3. `Affine`
+  is the SVG/PostScript `[a b c d e f]` layout with `then` reading in the
+  order points travel; `max_scale` is the largest singular value in closed
+  form, which is what stage 3 will derive its tolerance from. Paths are
+  structure-of-arrays verb and point buffers, and arcs, ellipses and circles
+  become cubics in `PathBuilder`, so the IR carries exactly three curve types.
+  `rect` and `rounded_rect` are recognised primitives that tag the path with a
+  `PathShape` for the stage 4 fast path; radii are clamped CSS-style so a
+  rounded rect's bounds are exactly the rect it was built from. Builds
+  `no_std` with `libm`.
