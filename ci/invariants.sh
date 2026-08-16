@@ -41,7 +41,19 @@ SCENE=(otf-2d-engine-scene/src)
 GEOM=(otf-2d-engine-geom/src)
 COLOR=(otf-2d-engine-color/src)
 RASTER=(otf-2d-engine-raster/src)
-ALL_SRC=(otf-2d-engine-*/src otf-2d-engine/src)
+# The shipped crates. Deliberately enumerated rather than globbed, so the
+# test-only crates (-testing, -bench) are not held to invariants that describe
+# the engine's public behaviour.
+ALL_SRC=(
+    otf-2d-engine-geom/src
+    otf-2d-engine-color/src
+    otf-2d-engine-scene/src
+    otf-2d-engine-raster/src
+    otf-2d-engine-cpu/src
+    otf-2d-engine-cache/src
+    otf-2d-engine-text/src
+    otf-2d-engine/src
+)
 
 # I-1 — the scene is immutable after encoding. No interior mutability.
 check I-1 'no interior mutability in otf-2d-engine-scene' \
@@ -54,8 +66,11 @@ check I-2 'no owning pointers in the scene IR' \
     "${SCENE[@]}" "${GEOM[@]}" "${COLOR[@]}"
 
 # I-3 — no stateful graphics context.
+# A stateful context's save/restore mutate the context, so match on the
+# receiver rather than the bare name — file-I/O helpers called `save` are not
+# what this invariant is about.
 check I-3 'no save/restore stateful context API' \
-    'fn (save|restore)\b' \
+    'fn (save|restore)[a-z_]*\s*\(\s*&mut self' \
     "${ALL_SRC[@]}"
 
 # I-4 — 2D-Engine never spawns a thread.

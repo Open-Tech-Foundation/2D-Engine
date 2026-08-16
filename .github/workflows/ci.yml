@@ -36,4 +36,17 @@ jobs:
         env:
           # The aarch64 runner is already native; cross-checking it is redundant.
           OTF_SKIP_CROSS: ${{ matrix.os == 'ubuntu-latest' && '0' || '1' }}
+          # Shared CI runners are too noisy for a timing gate; benchmarks run
+          # on the dedicated job below.
+          OTF_SKIP_BENCH: '1'
         run: ./ci/check.sh
+
+  bench:
+    name: benchmarks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup toolchain install stable --profile minimal
+      - uses: Swatinem/rust-cache@v2
+      - name: Compare against the tracked baseline
+        run: ./ci/check.sh bench

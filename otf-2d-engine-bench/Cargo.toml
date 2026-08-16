@@ -1,0 +1,20 @@
+[package]
+name = "otf-2d-engine-bench"
+description = "Benchmark corpus for 2D-Engine. Not published."
+publish = false
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+criterion.workspace = true
+otf-2d-engine.workspace = true
+otf-2d-engine-testing.workspace = true
+serde_json.workspace = true
+
+[[bench]]
+name = "render"
+harness = false

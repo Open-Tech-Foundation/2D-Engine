@@ -94,6 +94,13 @@ step_cross() {
     done
 }
 
+# AGENTS.md: benchmarks run on every commit, compared against the tracked
+# baseline. A regression beyond threshold fails the build.
+step_bench() {
+    if [ "${OTF_SKIP_BENCH:-0}" = 1 ]; then skip "bench (OTF_SKIP_BENCH=1)"; return 0; fi
+    cargo bench -p otf-2d-engine-bench
+}
+
 step_msrv() {
     local v=${OTF_MSRV:-$(msrv)}
     if ! rustup toolchain list | grep -q "^$v"; then
@@ -113,7 +120,7 @@ step_invariants() {
 
 # ---------------------------------------------------------------- driver
 
-steps=(fmt clippy build test docs no_std cross msrv invariants)
+steps=(fmt clippy build test docs no_std cross msrv bench invariants)
 if [ $# -gt 0 ]; then steps=("$@"); fi
 
 for s in "${steps[@]}"; do

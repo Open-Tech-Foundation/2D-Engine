@@ -35,3 +35,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   one-pixel fixture, so the proof that it fails loudly is permanent rather
   than a one-off manual check. The corpus is registered explicitly in
   `tests/golden.rs` and is currently empty and passing.
+- **T0.4** — Criterion-based benchmark harness in `otf-2d-engine-bench`.
+  `cargo bench` runs the corpus, folds Criterion's mean estimates plus the
+  per-stage timings from `RenderStats` into `target/bench-results.json`, and
+  compares it against the tracked `benchmarks/baseline.json`. A slowdown past
+  `OTF_BENCH_THRESHOLD` (default 5%) exits non-zero, as does a benchmark that
+  silently stopped being measured; a new benchmark is reported but does not
+  fail. `OTF_BLESS_BENCH=1` re-records the baseline behind the same
+  justify-it-in-the-commit banner the golden harness uses. The corpus is
+  currently empty and the run emits the JSON, which is the T0.4 gate.
+  `ci/check.sh` gained a `bench` step so this runs on every commit.

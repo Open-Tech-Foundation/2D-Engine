@@ -11,3 +11,5 @@ authors.workspace = true
 
 [dependencies]
 png.workspace = true
+serde.workspace = true
+serde_json.workspace = true

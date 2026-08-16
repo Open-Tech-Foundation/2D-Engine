@@ -10,6 +10,7 @@ members = [
     "otf-2d-engine-text",
     "otf-2d-engine",
     "otf-2d-engine-testing",
+    "otf-2d-engine-bench",
 ]
 
 [workspace.package]
@@ -27,6 +28,7 @@ otf-2d-engine-scene = { path = "otf-2d-engine-scene", version = "0.0.0", default
 otf-2d-engine-raster = { path = "otf-2d-engine-raster", version = "0.0.0" }
 otf-2d-engine-cpu = { path = "otf-2d-engine-cpu", version = "0.0.0" }
 otf-2d-engine-cache = { path = "otf-2d-engine-cache", version = "0.0.0" }
+otf-2d-engine = { path = "otf-2d-engine", version = "0.0.0" }
 
 bytemuck = { version = "1", default-features = false }
 smallvec = { version = "1", default-features = false }
@@ -40,6 +42,8 @@ otf-2d-engine-testing = { path = "otf-2d-engine-testing" }
 png = "0.18"
 criterion = { version = "0.7", default-features = false }
 proptest = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 
 [profile.release]
 lto = "thin"

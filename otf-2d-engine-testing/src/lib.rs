@@ -5,6 +5,7 @@
 //! shipped crates link against.
 #![forbid(unsafe_code)]
 
+pub mod bench;
 pub mod golden;
 pub mod image;
 
