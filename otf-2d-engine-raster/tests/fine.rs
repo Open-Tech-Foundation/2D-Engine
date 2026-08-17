@@ -527,4 +527,37 @@ fn report_kernel_throughput() {
             );
         }
     }
+
+    // The per-pixel-coverage path, which no map can collapse: this is what an
+    // antialiased edge costs.
+    let width = 4096u32;
+    let coverage: Vec<u8> = (0..width).map(|i| (i % 255) as u8 + 1).collect();
+    for simd in [Simd::Scalar, Simd::Avx2] {
+        if !simd.is_available() {
+            continue;
+        }
+        let paint = SolidPaint::new(
+            Color::from_srgb8(20, 40, 200, 160),
+            PixelFormat::Rgba8Premul,
+            &tables,
+        );
+        let mut striper = Striper::new();
+        let strips = striper.from_coverage(&coverage, width);
+        let mut data = vec![128u8; width as usize * 4];
+        let mut target =
+            TargetMut::new(&mut data, width, 1, PixelFormat::Rgba8Premul).expect("target");
+        render_solid_paint(&mut target, &strips, &paint, &tables, simd, None);
+        let best = (0..2000)
+            .map(|_| {
+                let start = std::time::Instant::now();
+                render_solid_paint(&mut target, &strips, &paint, &tables, simd, None);
+                start.elapsed()
+            })
+            .min()
+            .expect("runs");
+        println!(
+            "varying coverage {simd:?}: {best:?} ({:.2} ns/pixel)",
+            best.as_secs_f64() * 1e9 / width as f64
+        );
+    }
 }

@@ -207,6 +207,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   asserts the chunks tile the buffer exactly. `threads: None` never reaches a
   pool at all. Decided D-34 and D-35.
 
+### Fixed
+
+- Stage 6 collapses a constant-coverage span wider than 96 pixels into a
+  byte-to-byte map, so the transfer functions leave the per-pixel loop
+  entirely. Both kernels take this branch and build the same map, so it is a
+  change of work and not of answer. On a Skylake-class core a full-HD
+  translucent fill went from 3.24 to 2.98 ns/pixel scalar, and the AVX2 path —
+  which had been 2.4× *slower* than scalar on that case, because it is
+  gather-bound and `vpgatherdd` is no faster than scalar loads — now matches it
+  exactly. The per-pixel-coverage path is still 9.19 vs 4.93 ns/pixel in AVX2's
+  disfavour; it is O(perimeter) rather than O(area), so the net effect of
+  selecting AVX2 is neutral to positive, and the measurements are recorded in
+  D-36 and D-37 rather than left to be rediscovered.
+
 ### Changed
 
 - `ci/invariants.sh` no longer greps comment lines. A rule whose own

@@ -272,6 +272,17 @@ fn blend_uniform(
     coverage: u8,
     simd: Simd,
 ) {
+    let cov = tables.coverage(coverage);
+    if span.len() / 4 >= UNIFORM_MAP_WIDTH {
+        // Coverage is constant across the span, so the output byte is a pure
+        // function of the input byte: the whole blend collapses into a
+        // byte-to-byte map built once and applied with no arithmetic at all.
+        // Both kernels take this branch and build the same map, so the result
+        // is identical either way — this is a change of work, not of answer.
+        UniformMap::build(paint, tables, cov).apply(span);
+        return;
+    }
+
     #[cfg(all(feature = "std", target_arch = "x86_64"))]
     if simd == Simd::Avx2 {
         // SAFETY: `resolve` only yields `Avx2` when the CPU reports it.
@@ -279,9 +290,50 @@ fn blend_uniform(
         return;
     }
     let _ = simd;
-    let cov = tables.coverage(coverage);
     for pixel in span.chunks_exact_mut(4) {
         blend_pixel(pixel, paint, tables, cov);
+    }
+}
+
+/// Span width past which collapsing the blend into a byte-to-byte map beats
+/// blending pixel by pixel.
+///
+/// The map costs 1024 table lookups to build and then costs four byte loads
+/// per pixel. Below this width the build dominates; above it, the interiors
+/// this catches are hundreds of pixels wide and it is most of the saving.
+const UNIFORM_MAP_WIDTH: usize = 96;
+
+/// The byte-to-byte map a constant-coverage span collapses to.
+struct UniformMap {
+    channels: [[u8; 256]; 4],
+}
+
+impl UniformMap {
+    fn build(paint: &SolidPaint, tables: &FineTables, cov: u32) -> UniformMap {
+        let alpha = scale(paint.levels[3], cov);
+        let inverse = LINEAR_SCALE - alpha;
+        let mut channels = [[0u8; 256]; 4];
+        for (slot, map) in channels.iter_mut().enumerate().take(3) {
+            let source = scale(paint.levels[slot], cov);
+            for (byte, out) in map.iter_mut().enumerate() {
+                let destination = tables.decode(byte as u8);
+                *out = tables.encode((source + scale(destination, inverse)).min(LINEAR_SCALE));
+            }
+        }
+        for (byte, out) in channels[3].iter_mut().enumerate() {
+            let destination = tables.decode_alpha(byte as u8);
+            *out = tables.encode_alpha((alpha + scale(destination, inverse)).min(LINEAR_SCALE));
+        }
+        UniformMap { channels }
+    }
+
+    fn apply(&self, span: &mut [u8]) {
+        for pixel in span.chunks_exact_mut(4) {
+            pixel[0] = self.channels[0][pixel[0] as usize];
+            pixel[1] = self.channels[1][pixel[1] as usize];
+            pixel[2] = self.channels[2][pixel[2] as usize];
+            pixel[3] = self.channels[3][pixel[3] as usize];
+        }
     }
 }
 
