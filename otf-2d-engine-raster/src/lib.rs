@@ -16,6 +16,7 @@ mod fine;
 mod pixels;
 mod segment;
 mod strips;
+mod threads;
 
 pub use binning::{BinStats, Binner, SurfaceSize, TileBins, TileEntry, TileGeometry};
 pub use fine::{
@@ -25,3 +26,4 @@ pub use fine::{
 pub use pixels::{PixelFormat, TargetError, TargetMut, encode_color};
 pub use segment::Segment;
 pub use strips::{Strip, StripKind, StripStats, Striper, Strips};
+pub use threads::{ChunkTask, SerialPool, ThreadPool};

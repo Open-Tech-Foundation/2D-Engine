@@ -153,6 +153,17 @@ impl<'a> TargetMut<'a> {
         self.data.get_mut(start..end)
     }
 
+    /// The bytes covered by the target's rows, exactly.
+    ///
+    /// Trimmed to `stride * height`: a caller may lend a larger buffer, and
+    /// the extra must not turn into a phantom band when the target is split
+    /// for threading.
+    #[inline]
+    pub fn rows_mut(&mut self) -> &mut [u8] {
+        let len = self.stride * self.height as usize;
+        &mut self.data[..len]
+    }
+
     /// Fills the whole target with one colour, encoded for its format.
     pub fn clear(&mut self, color: otf_2d_engine_color::Color, tables: &FineTables) {
         let bytes = encode_color(color, self.format, tables);

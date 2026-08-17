@@ -34,9 +34,18 @@ pub struct FineTables {
     /// Alpha byte (and coverage byte) to linear level. Alpha carries no
     /// transfer function, so this is a plain scale.
     alpha: Box<[u32; 256]>,
-    /// Linear level to sRGB byte.
-    encode: Box<[u32; LINEAR_LEVELS]>,
+    /// Linear level to sRGB byte, four bytes packed per word.
+    ///
+    /// Packed rather than one `u32` per level because this is the table the
+    /// inner loop hits hardest, and at one word per level it is 16 KiB — which
+    /// it loses from L1 to the megabytes of destination pixels streaming past
+    /// it. Packed it is 4 KiB and stays resident, which on a Skylake-class
+    /// core is the difference between a gather costing five cycles and twenty.
+    encode: Box<[u32; ENCODE_WORDS]>,
 }
+
+/// Words needed to hold [`LINEAR_LEVELS`] packed bytes.
+pub(crate) const ENCODE_WORDS: usize = LINEAR_LEVELS.div_ceil(4);
 
 impl FineTables {
     /// Builds the tables.
@@ -49,9 +58,10 @@ impl FineTables {
             alpha[byte] = ((byte as u32 * LINEAR_SCALE) + 127) / 255;
         }
 
-        let mut encode = Box::new([0u32; LINEAR_LEVELS]);
-        for (level, slot) in encode.iter_mut().enumerate() {
-            *slot = linear_to_srgb8(level as f32 / LINEAR_SCALE as f32) as u32;
+        let mut encode = Box::new([0u32; ENCODE_WORDS]);
+        for level in 0..LINEAR_LEVELS {
+            let byte = linear_to_srgb8(level as f32 / LINEAR_SCALE as f32) as u32;
+            encode[level / 4] |= byte << ((level % 4) * 8);
         }
 
         FineTables {
@@ -83,7 +93,8 @@ impl FineTables {
     /// Linear level to sRGB byte.
     #[inline]
     pub fn encode(&self, level: u32) -> u8 {
-        self.encode[(level as usize).min(LINEAR_LEVELS - 1)] as u8
+        let level = (level as usize).min(LINEAR_LEVELS - 1);
+        (self.encode[level / 4] >> ((level % 4) * 8)) as u8
     }
 
     /// Linear level to alpha byte.
@@ -95,7 +106,7 @@ impl FineTables {
 
     /// The raw tables, for the SIMD kernel's gathers.
     #[inline]
-    pub(crate) fn raw(&self) -> (&[u32; 256], &[u32; 256], &[u32; LINEAR_LEVELS]) {
+    pub(crate) fn raw(&self) -> (&[u32; 256], &[u32; 256], &[u32; ENCODE_WORDS]) {
         (&self.decode, &self.alpha, &self.encode)
     }
 }

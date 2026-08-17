@@ -124,6 +124,22 @@ impl<'a> Strips<'a> {
         self.stats
     }
 
+    /// The range of [`Strips::strips`] belonging to one band.
+    ///
+    /// Strips are emitted band by band, so this is a binary search rather than
+    /// a scan — which matters once bands are handed to different workers.
+    pub fn band_range(&self, band: u32) -> core::ops::Range<usize> {
+        let start = self.strips.partition_point(|s| s.band < band);
+        let end = self.strips.partition_point(|s| s.band <= band);
+        start..end
+    }
+
+    /// The strips belonging to one band.
+    pub fn band_strips(&self, band: u32) -> &'a [Strip] {
+        let range = self.band_range(band);
+        &self.strips[range]
+    }
+
     /// The alpha bytes belonging to a strip.
     pub fn strip_alphas(&self, strip: &Strip) -> &'a [u8] {
         let (offset, len) = match strip.kind {

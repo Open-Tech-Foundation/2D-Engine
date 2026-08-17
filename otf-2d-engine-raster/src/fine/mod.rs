@@ -36,6 +36,7 @@ pub use tables::{FineTables, LINEAR_LEVELS, LINEAR_SCALE, LINEAR_SHIFT};
 
 use crate::pixels::{PixelFormat, TargetMut, quantize};
 use crate::strips::{StripKind, Strips};
+use crate::threads::{SerialPool, ThreadPool};
 
 /// Rounding constant for the fixed-point shift.
 pub(crate) const LINEAR_HALF: u32 = LINEAR_SCALE / 2;
@@ -106,16 +107,18 @@ pub struct FineStats {
 ///
 /// `simd` selects the implementation; [`Simd::detect`] picks the best the CPU
 /// supports, and any choice the CPU cannot run falls back to scalar rather
-/// than faulting.
+/// than faulting. `pool` is the caller's worker pool, or `None` for
+/// single-threaded — the engine never spawns a thread (I-4).
 pub fn render_solid(
     target: &mut TargetMut<'_>,
     strips: &Strips<'_>,
     color: Color,
     tables: &FineTables,
     simd: Simd,
+    pool: Option<&dyn ThreadPool>,
 ) -> FineStats {
     let paint = SolidPaint::new(color, target.format(), tables);
-    render_solid_paint(target, strips, &paint, tables, simd)
+    render_solid_paint(target, strips, &paint, tables, simd, pool)
 }
 
 /// The same, with the paint already prepared.
@@ -125,55 +128,114 @@ pub fn render_solid_paint(
     paint: &SolidPaint,
     tables: &FineTables,
     simd: Simd,
+    pool: Option<&dyn ThreadPool>,
 ) -> FineStats {
     let simd = simd.resolve();
-    let mut stats = FineStats {
-        simd,
-        ..FineStats::default()
-    };
+    let width = target.width();
+    let stride = target.stride();
     let band_height = strips.geometry().height as u32;
+    let stats = count(strips, width, paint, simd);
 
-    for strip in strips.strips() {
+    let chunk = stride * band_height as usize;
+    if chunk == 0 {
+        return stats;
+    }
+    // Each band is a whole run of scanlines written by exactly one worker, so
+    // no two workers ever touch the same byte and the result cannot depend on
+    // the schedule.
+    let task = move |band: usize, rows: &mut [u8]| {
+        render_band(
+            rows,
+            stride,
+            width,
+            strips,
+            paint,
+            tables,
+            simd,
+            band as u32,
+        );
+    };
+    let data = target.rows_mut();
+    match pool {
+        Some(pool) => pool.dispatch_chunks(data, chunk, &task),
+        None => SerialPool.dispatch_chunks(data, chunk, &task),
+    }
+    stats
+}
+
+/// Renders one band into its own rows.
+#[allow(clippy::too_many_arguments)]
+fn render_band(
+    rows: &mut [u8],
+    stride: usize,
+    width: u32,
+    strips: &Strips<'_>,
+    paint: &SolidPaint,
+    tables: &FineTables,
+    simd: Simd,
+    band: u32,
+) {
+    let available = rows.len() / stride.max(1);
+    for strip in strips.band_strips(band) {
         let alphas = strips.strip_alphas(strip);
-        let top = strip.band * band_height;
-        let width = strip.width.min(target.width().saturating_sub(strip.x));
-        if width == 0 {
+        let span_width = strip.width.min(width.saturating_sub(strip.x));
+        if span_width == 0 {
             continue;
         }
-        for row in 0..strip.rows as u32 {
-            let y = top + row;
-            let Some(pixels) = target.row_mut(y) else {
+        for row in 0..(strip.rows as usize).min(available) {
+            let start = row * stride + strip.x as usize * 4;
+            let end = start + span_width as usize * 4;
+            let Some(span) = rows.get_mut(start..end) else {
                 continue;
             };
-            let start = strip.x as usize * 4;
-            let end = start + width as usize * 4;
-            let Some(span) = pixels.get_mut(start..end) else {
-                continue;
-            };
-
             match strip.kind {
                 StripKind::Uniform { .. } => {
-                    let coverage = alphas.get(row as usize).copied().unwrap_or(0);
+                    let coverage = alphas.get(row).copied().unwrap_or(0);
                     if coverage == 0 {
                         continue;
                     }
                     if coverage == 255 && paint.opaque {
                         fill(span, paint.bytes, simd);
-                        stats.pixels_stored += width as usize;
                     } else {
                         blend_uniform(span, paint, tables, coverage, simd);
-                        stats.pixels_blended += width as usize;
                     }
                 }
                 StripKind::Alpha { .. } => {
-                    let row_start = row as usize * strip.width as usize;
-                    let row_end = row_start + width as usize;
+                    let row_start = row * strip.width as usize;
+                    let row_end = row_start + span_width as usize;
                     let Some(coverage) = alphas.get(row_start..row_end) else {
                         continue;
                     };
                     blend_coverage(span, paint, tables, coverage, simd);
-                    stats.pixels_blended += width as usize;
                 }
+            }
+        }
+    }
+}
+
+/// Counts what the render will do, from the strips alone.
+///
+/// Serial and exact, so workers need no shared counters: the statistics are a
+/// property of the strip list, not of who rendered it.
+fn count(strips: &Strips<'_>, width: u32, paint: &SolidPaint, simd: Simd) -> FineStats {
+    let mut stats = FineStats {
+        simd,
+        ..FineStats::default()
+    };
+    for strip in strips.strips() {
+        let span = strip.width.min(width.saturating_sub(strip.x)) as usize;
+        if span == 0 {
+            continue;
+        }
+        let alphas = strips.strip_alphas(strip);
+        for row in 0..strip.rows as usize {
+            match strip.kind {
+                StripKind::Uniform { .. } => match alphas.get(row).copied().unwrap_or(0) {
+                    0 => {}
+                    255 if paint.opaque => stats.pixels_stored += span,
+                    _ => stats.pixels_blended += span,
+                },
+                StripKind::Alpha { .. } => stats.pixels_blended += span,
             }
         }
     }

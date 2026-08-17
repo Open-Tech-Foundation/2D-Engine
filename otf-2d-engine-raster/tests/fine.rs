@@ -45,7 +45,7 @@ fn render(
     let mut target =
         TargetMut::new(&mut data, surface.width, surface.height, format).expect("target");
     target.clear(background, tables);
-    render_solid(&mut target, &strips, color, tables, simd);
+    render_solid(&mut target, &strips, color, tables, simd, None);
     data
 }
 
@@ -101,7 +101,7 @@ fn the_reported_path_is_the_path_that_ran() {
 
     let mut data = vec![0u8; 16 * 16 * 4];
     let mut target = TargetMut::new(&mut data, 16, 16, PixelFormat::Rgba8Premul).expect("target");
-    let stats = render_solid(&mut target, &strips, black(), &tables, Simd::Avx2);
+    let stats = render_solid(&mut target, &strips, black(), &tables, Simd::Avx2, None);
     assert_eq!(stats.simd, Simd::Avx2.resolve());
     assert!(stats.pixels_stored + stats.pixels_blended > 0);
 }
@@ -201,7 +201,7 @@ fn blend_span(
     let mut striper = Striper::new();
     let strips = striper.from_coverage(coverage, width);
     let mut target = TargetMut::new(data, width, 1, format).expect("target");
-    render_solid_paint(&mut target, &strips, paint, tables, simd);
+    render_solid_paint(&mut target, &strips, paint, tables, simd, None);
 }
 
 // ------------------------------------------------------------ whole scenes
@@ -406,7 +406,7 @@ fn the_u8_pipeline_matches_an_f32_reference() {
             let strips = striper.from_coverage(&coverage, width);
             let mut target =
                 TargetMut::new(&mut data, width, 1, PixelFormat::Rgba8Premul).expect("target");
-            render_solid_paint(&mut target, &strips, &paint, &tables, Simd::Scalar);
+            render_solid_paint(&mut target, &strips, &paint, &tables, Simd::Scalar, None);
 
             let source = paint_color.convert_to(ColorSpace::Srgb).to_premul();
             for (index, chunk) in data.chunks_exact(4).enumerate() {
@@ -476,5 +476,55 @@ fn a_strided_target_writes_only_its_own_rows() {
             data[start + 32..start + stride].iter().all(|&b| b == 0xcc),
             "padding after row {row} was written"
         );
+    }
+}
+
+/// Reports what the SIMD kernel actually buys. Not asserted: a throughput
+/// threshold on a shared machine is a flaky test, and T2.4's criteria are
+/// about correctness and dispatch, not speed. Recorded so the number is
+/// visible rather than assumed.
+#[test]
+#[ignore = "wall-clock measurement; run with --ignored"]
+fn report_kernel_throughput() {
+    let tables = FineTables::new();
+    let surface = SurfaceSize::new(1920, 1080);
+    let segments = rect(0.5, 0.5, 1919.5, 1079.5);
+    let mut binner = Binner::new();
+    let bins = binner.bin(&segments, TileGeometry::DEFAULT, surface);
+    let mut striper = Striper::new();
+    let strips = striper.generate(&bins, FillRule::NonZero);
+
+    for (label, color) in [
+        ("translucent", Color::from_srgb8(20, 40, 200, 160)),
+        ("opaque", Color::from_srgb8(20, 40, 200, 255)),
+    ] {
+        for simd in [Simd::Scalar, Simd::Avx2] {
+            if !simd.is_available() {
+                continue;
+            }
+            let paint = SolidPaint::new(color, PixelFormat::Rgba8Premul, &tables);
+            let mut data = vec![0u8; (surface.width * surface.height) as usize * 4];
+            let mut target = TargetMut::new(
+                &mut data,
+                surface.width,
+                surface.height,
+                PixelFormat::Rgba8Premul,
+            )
+            .expect("target");
+            render_solid_paint(&mut target, &strips, &paint, &tables, simd, None);
+            let best = (0..7)
+                .map(|_| {
+                    let start = std::time::Instant::now();
+                    render_solid_paint(&mut target, &strips, &paint, &tables, simd, None);
+                    start.elapsed()
+                })
+                .min()
+                .expect("seven runs");
+            let pixels = (surface.width * surface.height) as f64;
+            println!(
+                "{label} {simd:?}: {best:?} ({:.2} ns/pixel)",
+                best.as_secs_f64() * 1e9 / pixels
+            );
+        }
     }
 }

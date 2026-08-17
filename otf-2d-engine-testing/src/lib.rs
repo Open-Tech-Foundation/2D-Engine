@@ -11,6 +11,7 @@ pub mod alloc;
 pub mod bench;
 pub mod golden;
 pub mod image;
+pub mod pool;
 
 /// Creates a unique scratch directory under `target/` and removes any previous
 /// contents. Used by harness self-tests that need a private reference dir.

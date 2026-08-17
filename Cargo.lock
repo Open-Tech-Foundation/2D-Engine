@@ -429,6 +429,7 @@ dependencies = [
 name = "otf-2d-engine-testing"
 version = "0.0.0"
 dependencies = [
+ "otf-2d-engine-raster",
  "png",
  "serde",
  "serde_json",

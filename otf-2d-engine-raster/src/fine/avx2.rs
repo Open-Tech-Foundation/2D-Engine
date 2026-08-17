@@ -12,7 +12,7 @@
 
 use core::arch::x86_64::*;
 
-use super::tables::{FineTables, LINEAR_LEVELS, LINEAR_SCALE, LINEAR_SHIFT};
+use super::tables::{FineTables, LINEAR_SCALE, LINEAR_SHIFT};
 use super::{LINEAR_HALF, SolidPaint, blend_pixel, scale};
 
 /// Pixels per vector.
@@ -69,7 +69,7 @@ pub unsafe fn blend_uniform(
 
         let mut chunks = span.chunks_exact_mut(LANES * 4);
         for chunk in &mut chunks {
-            blend_chunk(chunk, tables, &source_vectors, inverse_vector);
+            blend_chunk(chunk, tables, source_vectors, inverse_vector);
         }
         for pixel in chunks.into_remainder().chunks_exact_mut(4) {
             blend_pixel(pixel, paint, tables, cov);
@@ -117,7 +117,7 @@ pub unsafe fn blend_coverage(
                 source_alpha,
             ];
             let chunk = &mut span[offset * 4..(offset + LANES) * 4];
-            blend_chunk(chunk, tables, &sources, inverse);
+            blend_chunk(chunk, tables, sources, inverse);
         }
 
         for index in vectors * LANES..pixels {
@@ -133,6 +133,7 @@ pub unsafe fn blend_coverage(
 
 /// `value * factor` in fixed point, rounded to nearest — the vector form of
 /// [`super::scale`], operation for operation.
+#[inline]
 #[target_feature(enable = "avx2")]
 unsafe fn scale_vector_lanes(value: __m256i, factor: __m256i) -> __m256i {
     let product = _mm256_mullo_epi32(value, factor);
@@ -141,20 +142,38 @@ unsafe fn scale_vector_lanes(value: __m256i, factor: __m256i) -> __m256i {
 }
 
 /// Reads eight table entries.
+#[inline]
 #[target_feature(enable = "avx2")]
 unsafe fn gather(table: *const u32, indices: __m256i) -> __m256i {
     // SAFETY: indices are masked to the table's length by the caller.
     unsafe { _mm256_i32gather_epi32(table.cast::<i32>(), indices, 4) }
 }
 
+/// Looks up eight packed encode-table bytes.
+///
+/// The table stores four bytes per word, so the index selects a word and the
+/// low two bits select the byte within it. One gather and two shifts, against
+/// a table a quarter the size — which is what keeps it in L1.
+#[inline]
+#[target_feature(enable = "avx2")]
+unsafe fn encode_levels(table: *const u32, levels: __m256i) -> __m256i {
+    unsafe {
+        let words = gather(table, _mm256_srli_epi32(levels, 2));
+        let shift = _mm256_slli_epi32(_mm256_and_si256(levels, _mm256_set1_epi32(3)), 3);
+        _mm256_and_si256(_mm256_srlv_epi32(words, shift), _mm256_set1_epi32(0xff))
+    }
+}
+
 /// Extracts one byte lane from each pixel. The shift must be a constant, hence
 /// the const parameter rather than a loop.
+#[inline]
 #[target_feature(enable = "avx2")]
 unsafe fn extract<const SHIFT: i32>(destination: __m256i, mask: __m256i) -> __m256i {
     _mm256_and_si256(_mm256_srli_epi32(destination, SHIFT), mask)
 }
 
 /// Puts a byte lane back.
+#[inline]
 #[target_feature(enable = "avx2")]
 unsafe fn place<const SHIFT: i32>(value: __m256i) -> __m256i {
     _mm256_slli_epi32(value, SHIFT)
@@ -162,11 +181,12 @@ unsafe fn place<const SHIFT: i32>(value: __m256i) -> __m256i {
 
 /// Blends eight pixels with per-channel source levels already scaled by
 /// coverage.
+#[inline]
 #[target_feature(enable = "avx2")]
 unsafe fn blend_chunk(
     chunk: &mut [u8],
     tables: &FineTables,
-    sources: &[__m256i; 4],
+    sources: [__m256i; 4],
     inverse: __m256i,
 ) {
     unsafe {
@@ -174,8 +194,6 @@ unsafe fn blend_chunk(
         let byte_mask = _mm256_set1_epi32(0xff);
         let ceiling = _mm256_set1_epi32(LINEAR_SCALE as i32);
         let destination = _mm256_loadu_si256(chunk.as_ptr().cast());
-
-        debug_assert!(LINEAR_LEVELS > LINEAR_SCALE as usize);
 
         // One colour channel: decode, blend, clamp, encode. Identical to the
         // scalar loop body, operation for operation.
@@ -186,7 +204,7 @@ unsafe fn blend_chunk(
                 let blended =
                     _mm256_add_epi32(sources[$slot], scale_vector_lanes(current, inverse));
                 let clamped = _mm256_min_epi32(blended, ceiling);
-                place::<$shift>(gather(encode.as_ptr(), clamped))
+                place::<$shift>(encode_levels(encode.as_ptr(), clamped))
             }};
         }
 

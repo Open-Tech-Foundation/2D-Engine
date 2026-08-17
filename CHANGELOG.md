@@ -194,6 +194,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   spends its time in. Decided D-31 (linear-light blending in the u8 path), D-32
   (a target byte is the encoding of the premultiplied linear value) and D-33
   (the blend is integer, so I-5 is structural).
+- **T2.5** — Threaded dispatch. `ThreadPool` is a caller-supplied trait; the
+  engine still spawns nothing (I-4, D-16). It hands the pool the target buffer
+  and a chunk size rather than an index range, because that is the only shape
+  that gives a worker exclusive access to part of the target without a
+  per-frame allocation or unsafe aliasing — and it is exactly what a `rayon`
+  `par_chunks_mut` adapter wants. Chunks are bands: runs of whole scanlines,
+  each written by one worker, so bit equality across thread counts is
+  structural rather than tested into existence. Verified anyway at 1, 2, 4 and
+  8 threads on both kernels, at ten surface heights that cut the last band
+  short, against a pool that runs chunks in reverse, and against one that
+  asserts the chunks tile the buffer exactly. `threads: None` never reaches a
+  pool at all. Decided D-34 and D-35.
 
 ### Changed
 
