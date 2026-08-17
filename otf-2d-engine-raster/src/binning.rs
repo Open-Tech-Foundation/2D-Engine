@@ -323,7 +323,11 @@ impl Binner {
                 (a.min(b), a.max(b))
             };
 
-            if hi <= 0.0 || lo >= surface.width as f64 {
+            // Only the right edge drops a band. A segment left of the surface
+            // still carries winding onto it — dropping it would leave the
+            // on-surface part of a shape that extends off the left edge
+            // unfilled — so it clamps into column 0 instead.
+            if lo >= surface.width as f64 {
                 continue;
             }
             let (first_col, last_col) = band_range(lo, hi, tile_w, columns);

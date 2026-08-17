@@ -10,6 +10,8 @@ extern crate alloc;
 
 mod binning;
 mod segment;
+mod strips;
 
 pub use binning::{BinStats, Binner, SurfaceSize, TileBins, TileEntry, TileGeometry};
 pub use segment::Segment;
+pub use strips::{Strip, StripKind, StripStats, Striper, Strips};

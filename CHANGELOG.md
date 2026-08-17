@@ -151,6 +151,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   by the surface, so the range buys nothing and costs half the SIMD lanes. A
   steady-state bin allocates nothing, and `otf-2d-engine-raster` now builds
   `no_std` and is part of the CI no_std matrix.
+- **T2.2** — Stage 5 strip generation. `Striper` turns binned segments into
+  sparse strips: per-pixel alpha where coverage varies, constant per-row alpha
+  where it does not. Antialiasing is analytic — exact signed area accumulated
+  from the geometry, distributed with the closed-form method Levien's `font-rs`
+  popularised — so the tests assert an exact area rather than a tolerance band:
+  an axis-aligned rect, a 45° triangle and a 45° diamond all integrate to their
+  analytic area, and a pixel-aligned rect to its area with no error at all. A
+  full-surface opaque rect produces solid runs and no per-pixel coverage; an
+  antialiased one costs exactly two alpha columns per band, so alpha storage
+  tracks the perimeter and not the area across a 64× area range. Away from any
+  edge the running sum is the winding number, which is what makes a solid
+  interior free. Both fill rules are implemented and tested against each other
+  on overlapping and reversed subpaths. Shapes extending past the surface edge
+  still fill: segments left of the surface clamp into column 0 rather than
+  being dropped, because they carry winding onto it. Tile geometry does not
+  change the pixels, which is what makes it safe to benchmark. A steady-state
+  pass allocates nothing. Decided D-29 (coverage is `u8`) and D-30 (a constant
+  span needs eight identical columns to be worth emitting).
 
 ### Changed
 

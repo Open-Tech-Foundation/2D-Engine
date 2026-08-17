@@ -358,6 +358,8 @@ Settled. Do not relitigate; if a task appears to require violating one, **stop a
 | D-26 | Stage 2 lives in `otf-2d-engine-scene`, not `otf-2d-engine-raster` | Doc 02 §1 assigns `-raster` stages 3–6, and Doc 01 §6 attaches vector backends after stage 2. Putting resolve in `-raster` would make a PDF backend depend on the rasterizer |
 | D-27 | `Resolver` owns the buffers; `ResolvedScene<'a>` borrows them and the `Scene` | The output must not copy geometry — curves have to stay the arena's curves for the vector seam, and copying every path per frame would break I-9. Splitting the reusable storage from the borrowed view is what lets both hold |
 | D-28 | Glyph runs and images resolve to `Rect::EVERYTHING` and are never culled in v1 | Glyph extents need outlines, which arrive with the glyph cache in M4; image extents live in the caller's registry. Culling either on a guessed em box risks dropping visible content, and a missing glyph is a worse failure than a draw that turns out to be off-screen |
+| D-29 | Strip coverage is `u8`, not `f32` | The T2.2 criterion is exactness within 1/255, and coverage is the fine loop's inner operand — `f32` would quadruple the hot buffer for precision the target cannot show. T3.8's `f32` pipeline is about colour, not coverage |
+| D-30 | A constant span is emitted only for runs of 8 or more identical columns | A constant span costs `rows` bytes at any width, but committing one mid-edge also ends the per-pixel span either side, and a strip record costs more than a few alpha bytes. The interiors this exists to catch are hundreds of columns wide |
 
 ---
 

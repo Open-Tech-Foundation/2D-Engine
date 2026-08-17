@@ -346,3 +346,19 @@ fn binning_a_second_frame_allocates_nothing() {
         "I-9: a steady-state bin allocated ({second:?})"
     );
 }
+
+#[test]
+fn a_segment_left_of_the_surface_is_clamped_into_column_zero() {
+    // It carries winding onto the surface: dropping it would leave a shape
+    // that extends off the left edge unfilled.
+    let segments = [Segment::new(-40.0, 1.0, -30.0, 30.0)];
+    let mut binner = Binner::new();
+    let bins = binner.bin(
+        &segments,
+        TileGeometry::new(16, 16),
+        SurfaceSize::new(32, 32),
+    );
+    assert_eq!(bins.stats().segments_dropped, 0);
+    let tiles: Vec<_> = bins.tiles().iter().map(|t| (t.x, t.y)).collect();
+    assert_eq!(tiles, vec![(0, 0), (0, 1)]);
+}
