@@ -33,6 +33,20 @@ impl Rect {
         y1: f64::NEG_INFINITY,
     };
 
+    /// The unbounded rectangle: contains every point.
+    ///
+    /// The identity for intersection, and what an object of unknown extent
+    /// reports — a glyph run before its outlines are loaded, or an image whose
+    /// pixel size lives in the caller's registry. Intersecting it with a
+    /// finite rect gives that rect back, so an unknown extent never makes a
+    /// bound larger than the surface it is clipped to.
+    pub const EVERYTHING: Rect = Rect {
+        x0: f64::NEG_INFINITY,
+        y0: f64::NEG_INFINITY,
+        x1: f64::INFINITY,
+        y1: f64::INFINITY,
+    };
+
     #[inline]
     pub const fn new(x0: f64, y0: f64, x1: f64, y1: f64) -> Self {
         Self { x0, y0, x1, y1 }

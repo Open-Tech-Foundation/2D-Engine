@@ -27,9 +27,12 @@ check() {
     for p in "${paths[@]}"; do [ -e "$p" ] && existing+=("$p"); done
     [ ${#existing[@]} -eq 0 ] && return 0
 
+    # Comment lines are excluded: these gates are about what the code does,
+    # and a rule whose own explanation trips it is a rule nobody can document.
     local hits
-    hits=$(grep -rnE --include='*.rs' "$pat" "${existing[@]}" 2>/dev/null \
-           | grep -v 'ci-allow:' || true)
+    hits=$(grep -rHnE --include='*.rs' "$pat" "${existing[@]}" 2>/dev/null \
+           | grep -v 'ci-allow:' \
+           | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' || true)
     if [ -n "$hits" ]; then
         printf '%s%s violated%s — %s\n' "$RED" "$id" "$OFF" "$msg"
         printf '%s\n' "$hits" | sed 's/^/    /'
@@ -87,6 +90,12 @@ check T2.2 'no supersampling path; antialiasing is analytic' \
 check T3.2 'strokes are expanded as offset curves, not polylines' \
     '\bpolyline\b' \
     "${RASTER[@]}"
+
+# Doc 01 §6 / T1.5 — stage 2 feeds the vector seam, so its output must stay
+# resolution-independent. Flattening and its tolerance belong to stage 3.
+check T1.5 'stage 2 is resolution-independent; no flattening, no tolerance' \
+    '(tolerance|flatten|subdivid|segment_count)' \
+    otf-2d-engine-scene/src/resolve.rs
 
 # Doc 01 §8 — fixed-point coordinates were removed by design.
 check D-01 'no fixed-point coordinates; f32 vectorises' \

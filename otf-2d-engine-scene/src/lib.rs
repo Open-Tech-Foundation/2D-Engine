@@ -11,6 +11,7 @@ extern crate alloc;
 mod builder;
 mod handles;
 mod records;
+mod resolve;
 mod scene;
 mod serialize;
 mod style;
@@ -27,6 +28,10 @@ pub use records::{
     ColorStopRec, DrawKind, DrawTag, FLAG_EVEN_ODD, GlyphRec, GlyphRunDesc, JOIN_BEVEL, JOIN_MITER,
     JOIN_ROUND, LayerDesc, NodeDesc, PAINT_FLAG_HAS_FOCAL, PaintDesc, PaintKind, PathDesc, RunRec,
     ShapeKind, StrokeDesc, TransformRec,
+};
+pub use resolve::{
+    ClipMask, ResolveParams, ResolveStats, ResolvedClip, ResolvedDraw, ResolvedKind, ResolvedLayer,
+    ResolvedScene, Resolver,
 };
 pub use scene::{PathView, Scene, SceneMemory, color_from_record, color_space_from_u32};
 pub use serialize::SceneDecodeError;

@@ -113,6 +113,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   its own length), D-24 (`NodeScope` derefs to the builder, resolving a
   borrow-check contradiction in Doc 03 §3's sketch) and D-25 (a dropped builder
   closes open layers).
+- **T1.5** — Stage 2 resolve, Doc 01 §4. `Resolver` turns a `Scene` into a
+  `ResolvedScene`: a flat, ordered draw list with absolute transforms,
+  collapsed clips, layer extents and off-target draws removed. There is no tree
+  in the output and the type system says so — every record is `Copy`, and a
+  recursive field would need heap indirection, which is not. Layer nesting
+  survives only as order, exactly as the tag stream expresses it. Rectangular
+  clips collapse into a single rect, which is nearly all UI clipping; anything
+  else becomes a mask in a flat list, and each clip owns a contiguous copy of
+  its masks so siblings cannot pick up each other's. Output is
+  resolution-independent: stage 2 never touches path geometry, only its
+  bounding boxes, so curves reach the vector seam as curves — enforced by a new
+  `ci/invariants.sh` gate that fails if `resolve.rs` ever mentions flattening or
+  a tolerance. Culling is disableable per P5, and a property test asserts it
+  removes exactly the draws that cannot touch the visible region. Stroke bounds
+  account for join and cap outset, so a fat stroke whose path lies off-screen
+  still survives. A steady-state resolve allocates nothing. Stage 2 is total: a
+  hand-built scene with unbalanced layers still resolves to a balanced list.
+  Decided D-26 (stage 2 lives in `-scene`, since vector backends must not
+  depend on the rasterizer), D-27 (`Resolver` owns the buffers,
+  `ResolvedScene<'a>` borrows) and D-28 (glyph runs and images are not culled
+  until their extents are knowable).
+- The arena layout is frozen at the M1 gate, pinned by a test asserting the
+  serialised buffer order, alongside the existing record-size assertions.
+
+### Changed
+
+- `ci/invariants.sh` no longer greps comment lines. A rule whose own
+  explanation trips it is a rule nobody can document.
 
 ### Fixed
 

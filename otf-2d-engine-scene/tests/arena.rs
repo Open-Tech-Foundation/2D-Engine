@@ -262,6 +262,51 @@ fn every_buffer_survives_the_round_trip() {
     assert_eq!(copy.shape(), original.shape());
 }
 
+/// The M1 gate freezes the arena layout: after it, a change here invalidates
+/// M2 onward. This pins the buffer *order* in the serialised header, which the
+/// record-size assertions in `records.rs` do not cover.
+#[test]
+fn the_arena_layout_is_frozen() {
+    let scene = populated();
+    let bytes = scene.to_bytes();
+    let count = |i: usize| {
+        let at = 24 + i * 8;
+        u64::from_ne_bytes(bytes[at..at + 8].try_into().expect("eight bytes")) as usize
+    };
+
+    let memory = scene.memory_usage();
+    assert_eq!(HEADER_LEN, 160, "17 buffers, 24-byte prologue");
+    assert_eq!(count(0), scene.tags().len(), "0: tags");
+    assert_eq!(count(1), scene.path_data().len(), "1: path_data");
+    assert_eq!(count(2), scene.path_verbs().len(), "2: path_verbs");
+    assert_eq!(count(3), scene.paths().len(), "3: paths");
+    assert_eq!(count(4), scene.transforms().len(), "4: transforms");
+    assert_eq!(count(5), scene.paints().len(), "5: paints");
+    assert_eq!(count(6), scene.stops().len(), "6: stops");
+    assert_eq!(count(7), scene.stop_runs().len(), "7: stop_runs");
+    assert_eq!(count(8), scene.strokes().len(), "8: strokes");
+    assert_eq!(count(9), scene.dash_data().len(), "9: dash_data");
+    assert_eq!(count(10), scene.glyph_runs().len(), "10: glyph_runs");
+    assert_eq!(count(11), scene.glyphs().len(), "11: glyphs");
+    assert_eq!(count(12), scene.variations().len(), "12: variations");
+    assert_eq!(
+        count(13),
+        scene.variation_runs().len(),
+        "13: variation_runs"
+    );
+    assert_eq!(count(14), scene.layers().len(), "14: layers");
+    assert_eq!(count(15), scene.node_hashes().len(), "15: node_hashes");
+    assert_eq!(count(16), scene.node_descs().len(), "16: node_descs");
+
+    // Distinct lengths are what make the order assertions above meaningful:
+    // if two adjacent buffers always had the same length, swapping them would
+    // pass. These are the ones that could plausibly be confused.
+    assert_ne!(scene.stops().len(), scene.stop_runs().len());
+    assert_ne!(scene.variations().len(), scene.variation_runs().len());
+    assert_ne!(scene.paths().len(), scene.transforms().len());
+    assert!(memory.total() > 0);
+}
+
 #[test]
 fn write_to_appends_rather_than_replaces() {
     let scene = populated();
