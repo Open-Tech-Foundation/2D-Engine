@@ -136,6 +136,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   until their extents are knowable).
 - The arena layout is frozen at the M1 gate, pinned by a test asserting the
   serialised buffer order, alongside the existing record-size assertions.
+- **T2.1** — Stage 4 binning in `otf-2d-engine-raster`. `Binner` assigns
+  device-space `Segment`s to every tile they touch, sparsely: storage is
+  proportional to covered area, and binning the same geometry into a 4096×
+  larger surface allocates nothing extra. Assignment is per crossing, not per
+  bounding-box cell — a 45° diagonal lands in the two tiles it passes through
+  rather than the four its bbox covers — because bands are half-open, so an
+  extent ending exactly on a boundary does not reach into the next tile.
+  Segments within a tile are deterministically ordered: assignments are packed
+  into `(tile, segment)` `u64` keys and sorted, which is a total order rather
+  than an artefact of iteration, and 1000 repeat runs are asserted identical.
+  Tile geometry is a runtime parameter (Q-01), defaulting to 256×4 and tested
+  at four configurations. Segments become `f32` here — device space is bounded
+  by the surface, so the range buys nothing and costs half the SIMD lanes. A
+  steady-state bin allocates nothing, and `otf-2d-engine-raster` now builds
+  `no_std` and is part of the CI no_std matrix.
 
 ### Changed
 

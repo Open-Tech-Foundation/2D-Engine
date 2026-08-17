@@ -36,7 +36,7 @@ skip() {
 }
 
 # Crates that must compile without `std`. Doc 02 §1.
-NO_STD_CRATES=(otf-2d-engine-geom otf-2d-engine-color otf-2d-engine-scene)
+NO_STD_CRATES=(otf-2d-engine-geom otf-2d-engine-color otf-2d-engine-scene otf-2d-engine-raster)
 # A target with no `std` at all, so a stray `use std::` is a hard error.
 NO_STD_TARGET=thumbv7em-none-eabi
 # Doc 01 §5 / D-12: the two architectures the rasterizer must build for.

@@ -19,7 +19,9 @@ libm = ["otf-2d-engine-geom/libm", "otf-2d-engine-color/libm", "otf-2d-engine-sc
 otf-2d-engine-geom.workspace = true
 otf-2d-engine-color.workspace = true
 otf-2d-engine-scene.workspace = true
+bytemuck = { workspace = true, features = ["derive"] }
 smallvec = { workspace = true, features = ["union", "const_generics"] }
 
 [dev-dependencies]
+otf-2d-engine-testing.workspace = true
 static_assertions.workspace = true
