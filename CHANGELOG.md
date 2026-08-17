@@ -169,6 +169,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   change the pixels, which is what makes it safe to benchmark. A steady-state
   pass allocates nothing. Decided D-29 (coverage is `u8`) and D-30 (a constant
   span needs eight identical columns to be worth emitting).
+- **T2.3 + T2.4** — Stage 6 fine rasterization, scalar and AVX2, landing
+  together as Doc 01 R1 requires. Strips and a solid paint in, pixels out, into
+  a borrowed strided `TargetMut` in `Rgba8Premul` or `Bgra8Premul`. The blend
+  is source-over in linear light: the u8 pipeline decodes each destination
+  byte, composites, and re-encodes, because compositing sRGB bytes directly is
+  nowhere near the `f32` model the spec makes authoritative — half-covered
+  black over white is 128 that way and 188 this way. A test asserts the u8
+  result stays within one code of an `f32` linear reference across five paints,
+  six backgrounds and all 256 coverages.
+  Bit-identity between the two kernels is structural rather than measured: the
+  blend is entirely integer fixed point with every transfer function a table
+  lookup, so there is no float rounding, no reciprocal estimate and no FMA
+  contraction to diverge. The AVX2 kernel performs the same operations in the
+  same order on eight pixels at once and reads the same tables. The sweep is
+  exhaustive — 256 destination bytes × 256 coverages × seven paints × two
+  formats — which catches a one-ULP change to the rounding constant that a
+  sampled sweep walks straight past; whole-scene renders are compared too. A
+  new invariant gate keeps FMA and `rcp`/`rsqrt` out of the crate.
+  Dispatch is runtime and per render: `Simd::detect` picks the best the CPU
+  supports, and asking for a path the machine cannot run resolves to scalar
+  rather than faulting. Full coverage by an opaque paint stores the paint bytes
+  without touching a transfer function at all, which is the case a large fill
+  spends its time in. Decided D-31 (linear-light blending in the u8 path), D-32
+  (a target byte is the encoding of the premultiplied linear value) and D-33
+  (the blend is integer, so I-5 is structural).
 
 ### Changed
 

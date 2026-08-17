@@ -89,7 +89,7 @@ pub fn f32_to_alpha8(alpha: f32) -> u8 {
 }
 
 /// Exact linear-light values for the 256 8-bit sRGB codes.
-pub static SRGB8_TO_LINEAR: [f32; 256] = [
+pub const SRGB8_TO_LINEAR: [f32; 256] = [
     0.0,
     0.000303527,
     0.000607054,

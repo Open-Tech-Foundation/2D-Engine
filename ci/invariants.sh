@@ -86,6 +86,15 @@ check T2.2 'no supersampling path; antialiasing is analytic' \
     '\b(supersampl|super_sampl|msaa|ssaa|SampleGrid)' \
     "${RASTER[@]}"
 
+# AGENTS.md I-5 / T2.4 — the scalar and SIMD paths must be bit-identical.
+# Fused multiply-add and reciprocal estimates are the two things that silently
+# make one path disagree with the other: FMA keeps an intermediate at higher
+# precision than the scalar mul-then-add, and rcp/rsqrt are approximations
+# whose results are not even specified exactly.
+check I-5 'no FMA or reciprocal estimates; they break scalar/SIMD bit-identity' \
+    '(_mm[0-9_]*_fm(add|sub)|_mm[0-9_]*_r(cp|sqrt)_(ps|ss)|\bmul_add\b|\bto_int_unchecked\b)' \
+    "${RASTER[@]}"
+
 # Doc 01 §4 / T3.2 — strokes are offset curves, never thick polylines.
 check T3.2 'strokes are expanded as offset curves, not polylines' \
     '\bpolyline\b' \

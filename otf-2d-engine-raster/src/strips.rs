@@ -204,6 +204,45 @@ impl Striper {
             + core::mem::size_of_val(&self.run_segments[..])
     }
 
+    /// Builds a single band containing one per-pixel span of the given
+    /// coverage.
+    ///
+    /// Stage 6 is the one place where a scalar and a SIMD kernel must agree
+    /// bit for bit, and proving that needs every combination of coverage and
+    /// destination byte — not just the ones a picture happens to contain.
+    /// This is how a test hands stage 6 a chosen coverage run.
+    ///
+    /// Not part of the stable API: strip layout is an internal format
+    /// (Doc 02 §8).
+    #[doc(hidden)]
+    pub fn from_coverage(&mut self, coverage: &[u8], width: u32) -> Strips<'_> {
+        self.strips.clear();
+        self.alphas.clear();
+        self.stats = StripStats::default();
+
+        let width = width.min(coverage.len() as u32);
+        if width > 0 {
+            self.alphas.extend_from_slice(&coverage[..width as usize]);
+            self.strips.push(Strip {
+                x: 0,
+                band: 0,
+                width,
+                rows: 1,
+                kind: StripKind::Alpha { offset: 0 },
+            });
+            self.stats.bands = 1;
+            self.stats.alpha_strips = 1;
+            self.stats.alpha_pixels = width as usize;
+        }
+        Strips {
+            geometry: TileGeometry::new(width.max(1) as u16, 1),
+            surface: SurfaceSize::new(width, 1),
+            strips: &self.strips,
+            alphas: &self.alphas,
+            stats: self.stats,
+        }
+    }
+
     /// Generates strips for one draw's binned segments.
     pub fn generate<'a>(&'a mut self, bins: &TileBins<'_>, rule: FillRule) -> Strips<'a> {
         self.strips.clear();
