@@ -7,20 +7,18 @@
 //! way to clear a regression is to make it not be one, or to re-record the
 //! baseline deliberately with `OTF_BLESS_BENCH=1` and say why in the commit.
 //!
-//! Benchmarks are registered in `register_all`. The corpus is currently empty,
-//! which is what T0.4 asks for: the plumbing lands before the measurements.
+//! Benchmarks are registered in `register_all`.
 
 use std::process::ExitCode;
 
 use criterion::Criterion;
-use otf_2d_engine_bench::{Registry, baseline_path, repo_root, results_path};
+use otf_2d_engine_bench::{Registry, baseline_path, fill, repo_root, results_path};
 use otf_2d_engine_testing::bench::{BenchResults, threshold_from_env};
 
 /// Every benchmark in the corpus. Add here and nowhere else.
 fn register_all(criterion: &mut Criterion, registry: &mut Registry) {
-    // T2.6 registers the first solid-fill benchmark here, then M3 and M4 add
-    // geometry, paint and text groups.
-    let _ = (criterion, registry);
+    fill::register(criterion, registry);
+    // M3 and M4 add geometry, paint and text groups here.
 }
 
 fn main() -> ExitCode {

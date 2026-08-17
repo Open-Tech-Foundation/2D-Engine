@@ -13,6 +13,8 @@ extern crate alloc;
 
 mod binning;
 mod fine;
+mod flatten;
+mod math;
 mod pixels;
 mod segment;
 mod strips;
@@ -23,6 +25,7 @@ pub use fine::{
     FineStats, FineTables, LINEAR_LEVELS, LINEAR_SCALE, LINEAR_SHIFT, Simd, SolidPaint,
     render_solid, render_solid_paint,
 };
+pub use flatten::{DEFAULT_TOLERANCE, Flattener, clip_segment, clip_segments};
 pub use pixels::{PixelFormat, TargetError, TargetMut, encode_color};
 pub use segment::Segment;
 pub use strips::{Strip, StripKind, StripStats, Striper, Strips};

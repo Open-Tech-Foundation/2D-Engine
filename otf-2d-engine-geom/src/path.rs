@@ -34,6 +34,22 @@ pub enum PathVerb {
 }
 
 impl PathVerb {
+    /// The verb a discriminant names, or `None` for an unknown one.
+    ///
+    /// The discriminants are the wire format the scene arena stores, so this
+    /// is what turns a decoded arena back into geometry.
+    #[inline]
+    pub const fn from_u8(value: u8) -> Option<PathVerb> {
+        match value {
+            0 => Some(PathVerb::MoveTo),
+            1 => Some(PathVerb::LineTo),
+            2 => Some(PathVerb::QuadTo),
+            3 => Some(PathVerb::CurveTo),
+            4 => Some(PathVerb::ClosePath),
+            _ => None,
+        }
+    }
+
     /// How many points this verb consumes from the point array.
     #[inline]
     pub const fn point_count(self) -> usize {

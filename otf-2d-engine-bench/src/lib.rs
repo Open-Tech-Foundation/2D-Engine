@@ -6,6 +6,8 @@
 //! `AGENTS.md` makes a per-commit gate.
 #![forbid(unsafe_code)]
 
+pub mod fill;
+
 use std::path::{Path, PathBuf};
 
 use otf_2d_engine_testing::bench::{BenchRecord, BenchResults, STAGE_COUNT};

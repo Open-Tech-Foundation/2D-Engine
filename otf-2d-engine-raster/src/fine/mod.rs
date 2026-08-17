@@ -140,6 +140,22 @@ pub fn render_solid_paint(
     if chunk == 0 {
         return stats;
     }
+    // Only the bands the strips actually reach are dispatched. Walking every
+    // band of the surface for every draw would make a frame cost
+    // `draws × surface height` rather than `draws × their own height` — the
+    // difference between a UI of small shapes being cheap and being quadratic
+    // in the window size.
+    let (Some(first), Some(last)) = (strips.strips().first(), strips.strips().last()) else {
+        return stats;
+    };
+    let first_band = first.band as usize;
+    let data = target.rows_mut();
+    let start = first_band * chunk;
+    let end = ((last.band as usize + 1) * chunk).min(data.len());
+    if start >= end {
+        return stats;
+    }
+
     // Each band is a whole run of scanlines written by exactly one worker, so
     // no two workers ever touch the same byte and the result cannot depend on
     // the schedule.
@@ -152,10 +168,10 @@ pub fn render_solid_paint(
             paint,
             tables,
             simd,
-            band as u32,
+            (band + first_band) as u32,
         );
     };
-    let data = target.rows_mut();
+    let data = &mut data[start..end];
     match pool {
         Some(pool) => pool.dispatch_chunks(data, chunk, &task),
         None => SerialPool.dispatch_chunks(data, chunk, &task),

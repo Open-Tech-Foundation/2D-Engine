@@ -12,6 +12,10 @@ authors.workspace = true
 [dependencies]
 criterion.workspace = true
 otf-2d-engine.workspace = true
+otf-2d-engine-cpu = { workspace = true, features = ["std"] }
+otf-2d-engine-scene = { workspace = true, features = ["std"] }
+otf-2d-engine-geom = { workspace = true, features = ["std"] }
+otf-2d-engine-color = { workspace = true, features = ["std"] }
 otf-2d-engine-testing.workspace = true
 serde_json.workspace = true
 

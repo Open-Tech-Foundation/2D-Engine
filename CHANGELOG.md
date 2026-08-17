@@ -221,6 +221,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   selecting AVX2 is neutral to positive, and the measurements are recorded in
   D-36 and D-37 rather than left to be rediscovered.
 
+### Added
+
+- **T2.6** — Solid fills end to end. `otf-2d-engine-cpu` gains `Pixmap`,
+  `RenderParams`, `RenderStats`, `RenderError` and `CpuRenderer`, which
+  assembles stages 2 through 6 and holds every stage's workspace for reuse.
+  `otf-2d-engine-raster` gains stage 3: a uniform-step subdivision flattener,
+  explicitly the M2 stopgap that T3.1 measures Euler-spiral flattening against
+  and then deletes (D-39). Rectangular clipping is done by clipping the
+  segments rather than masking pixels — clamping `x` and truncating `y`
+  preserves winding exactly, so a clip's own edges antialias for free and
+  stage 6 needs no notion of clipping (D-38).
+  **29 golden cases** cover aligned and fractional geometry, sub-pixel slivers,
+  diagonals, cubics and quadratics, both fill rules on self-intersecting and
+  reversed outlines, rotation, scale and shear, rectangular and nested clips,
+  and shapes running off every edge. They were blessed on evidence: 19 analytic
+  tests check the render against facts worked out on paper — a circle against
+  πr², a triangle against the shoelace area, a half-pixel rect's edges against
+  0.5 coverage, an annulus against its hole — and a convergence test shows the
+  flattener closing on the true area as the tolerance tightens.
+  A **reference comparison against `tiny-skia`** converts both renders back to
+  coverage before comparing, because `tiny-skia` composites in sRGB byte space
+  and 2D-Engine in linear light (D-40). Mean coverage difference is 0.00006 for
+  a rect, 0.00043 for a triangle, 0.00078 for a circle and 0.00079/0.00106 for
+  a star under each fill rule; covered areas agree within 0.35%. At a tight
+  flattening tolerance our circle lands on πr² more closely than `tiny-skia`
+  does, which is what integrating coverage rather than supersampling it buys.
+  The **`fill` benchmark group** is registered and the baseline recorded:
+  `solid_rect_1080p` 2.11 ms, `rounded_rects_1080p` 37.8 ms (960 shapes),
+  `circles_1080p` 60.2 ms (256 circles).
+- Stage 6 dispatches only the bands its strips reach, rather than every band of
+  the surface for every draw. 960 small rounded rects at 1080p went from
+  41.2 ms to 37.8 ms (D-41).
+
 ### Changed
 
 - `ci/invariants.sh` no longer greps comment lines. A rule whose own

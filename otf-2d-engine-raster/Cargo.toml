@@ -13,13 +13,14 @@ default = ["std"]
 # Every crate forwards `std` and `libm` rather than deciding for itself: a
 # consumer picks a float-math backend once, at the top of the tree.
 std = ["otf-2d-engine-geom/std", "otf-2d-engine-color/std", "otf-2d-engine-scene/std", "smallvec/write"]
-libm = ["otf-2d-engine-geom/libm", "otf-2d-engine-color/libm", "otf-2d-engine-scene/libm"]
+libm = ["dep:libm", "otf-2d-engine-geom/libm", "otf-2d-engine-color/libm", "otf-2d-engine-scene/libm"]
 
 [dependencies]
 otf-2d-engine-geom.workspace = true
 otf-2d-engine-color.workspace = true
 otf-2d-engine-scene.workspace = true
 bytemuck = { workspace = true, features = ["derive"] }
+libm = { workspace = true, optional = true }
 smallvec = { workspace = true, features = ["union", "const_generics"] }
 
 [dev-dependencies]

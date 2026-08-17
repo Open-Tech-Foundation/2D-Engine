@@ -1,4 +1,44 @@
 {
   "schema": 1,
-  "records": {}
+  "records": {
+    "fill/circles_1080p": {
+      "name": "fill/circles_1080p",
+      "wall_nanos": 60150941.4,
+      "stage_nanos": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "fill/rounded_rects_1080p": {
+      "name": "fill/rounded_rects_1080p",
+      "wall_nanos": 37784712.62,
+      "stage_nanos": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "fill/solid_rect_1080p": {
+      "name": "fill/solid_rect_1080p",
+      "wall_nanos": 2109129.2320833327,
+      "stage_nanos": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    }
+  }
 }
