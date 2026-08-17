@@ -26,7 +26,7 @@ use bytemuck::Pod;
 use crate::handles::NO_REF;
 use crate::records::{
     ColorStopRec, DrawKind, DrawTag, GlyphRec, GlyphRunDesc, LayerDesc, NodeDesc, PaintDesc,
-    PaintKind, PathDesc, ShapeKind, StrokeDesc, TransformRec,
+    PaintKind, PathDesc, RunRec, ShapeKind, StrokeDesc, TransformRec,
 };
 use crate::scene::Scene;
 use crate::unit::SceneUnit;
@@ -44,9 +44,9 @@ const VERSION: u32 = 1;
 const ENDIAN_SENTINEL: u32 = 0x0102_0304;
 
 /// Number of buffers, and so the number of counts in the header.
-const BUFFER_COUNT: usize = 15;
+const BUFFER_COUNT: usize = 17;
 
-/// `magic 8 | version 4 | endian 4 | layout 4 | unit 1 | pad 3 | counts 120`.
+/// `magic 8 | version 4 | endian 4 | layout 4 | unit 1 | pad 3 | counts 8*N`.
 const HEADER_LEN: usize = 24 + BUFFER_COUNT * 8;
 
 /// Every buffer starts on an eight-byte boundary so that a future zero-copy
@@ -70,6 +70,7 @@ fn layout_id() -> u32 {
         size_of::<GlyphRec>(),
         size_of::<LayerDesc>(),
         size_of::<NodeDesc>(),
+        size_of::<RunRec>(),
     ];
     let mut hash: u32 = 0x811c_9dc5;
     for size in sizes {
@@ -211,11 +212,13 @@ impl Scene {
             self.transforms.len() as u64,
             self.paints.len() as u64,
             self.stops.len() as u64,
+            self.stop_runs.len() as u64,
             self.strokes.len() as u64,
             self.dash_data.len() as u64,
             self.glyph_runs.len() as u64,
             self.glyphs.len() as u64,
             self.variations.len() as u64,
+            self.variation_runs.len() as u64,
             self.layers.len() as u64,
             self.node_hashes.len() as u64,
             self.node_descs.len() as u64,
@@ -232,11 +235,13 @@ impl Scene {
         push_buffer(out, start, &self.transforms);
         push_buffer(out, start, &self.paints);
         push_buffer(out, start, &self.stops);
+        push_buffer(out, start, &self.stop_runs);
         push_buffer(out, start, &self.strokes);
         push_buffer(out, start, &self.dash_data);
         push_buffer(out, start, &self.glyph_runs);
         push_buffer(out, start, &self.glyphs);
         push_buffer(out, start, &self.variations);
+        push_buffer(out, start, &self.variation_runs);
         push_buffer(out, start, &self.layers);
         push_buffer(out, start, &self.node_hashes);
         push_buffer(out, start, &self.node_descs);
@@ -363,14 +368,16 @@ impl Scene {
             transforms: reader.buffer(counts[4])?,
             paints: reader.buffer(counts[5])?,
             stops: reader.buffer(counts[6])?,
-            strokes: reader.buffer(counts[7])?,
-            dash_data: reader.buffer(counts[8])?,
-            glyph_runs: reader.buffer(counts[9])?,
-            glyphs: reader.buffer(counts[10])?,
-            variations: reader.buffer(counts[11])?,
-            layers: reader.buffer(counts[12])?,
-            node_hashes: reader.buffer(counts[13])?,
-            node_descs: reader.buffer(counts[14])?,
+            stop_runs: reader.buffer(counts[7])?,
+            strokes: reader.buffer(counts[8])?,
+            dash_data: reader.buffer(counts[9])?,
+            glyph_runs: reader.buffer(counts[10])?,
+            glyphs: reader.buffer(counts[11])?,
+            variations: reader.buffer(counts[12])?,
+            variation_runs: reader.buffer(counts[13])?,
+            layers: reader.buffer(counts[14])?,
+            node_hashes: reader.buffer(counts[15])?,
+            node_descs: reader.buffer(counts[16])?,
             unit,
         };
         scene.validate()?;
@@ -405,6 +412,18 @@ impl Scene {
                 || !optional(paint.transform, self.transforms.len())
             {
                 return dangling("paints", i);
+            }
+        }
+
+        for (i, run) in self.stop_runs.iter().enumerate() {
+            if !spans(run.offset, run.len, self.stops.len()) {
+                return dangling("stop_runs", i);
+            }
+        }
+
+        for (i, run) in self.variation_runs.iter().enumerate() {
+            if !spans(run.offset, run.len, self.variations.len()) {
+                return dangling("variation_runs", i);
             }
         }
 

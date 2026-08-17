@@ -23,7 +23,7 @@ static_assertions::assert_impl_all!(Scene: Send, Sync);
 /// Header length, mirrored from `serialize.rs`. Duplicated on purpose: the
 /// tests patch fixed offsets, so a header change should break them loudly
 /// rather than silently relocate what they are patching.
-const HEADER_LEN: usize = 24 + 15 * 8;
+const HEADER_LEN: usize = 24 + 17 * 8;
 
 // ---------------------------------------------------------------- fixtures
 
@@ -88,16 +88,13 @@ impl Fixture {
         let node = scene.encode_push_node(NodeId(7), otf_2d_engine_scene::NO_REF);
         let root = scene.encode_transform(Affine::translate(Vec2::new(4.0, 4.0)));
         let stops = scene.encode_stops(&self.stops);
-        let gradient = scene.encode_paint(
-            &Paint::LinearGradient {
-                start: Point::new(0.0, 0.0),
-                end: Point::new(64.0, 0.0),
-                stops,
-                extend: Extend::Reflect,
-            },
-            self.stops.len() as u32,
-        );
-        let solid = scene.encode_paint(&Paint::hex(0x3355ffff), 0);
+        let gradient = scene.encode_paint(&Paint::LinearGradient {
+            start: Point::new(0.0, 0.0),
+            end: Point::new(64.0, 0.0),
+            stops,
+            extend: Extend::Reflect,
+        });
+        let solid = scene.encode_paint(&Paint::hex(0x3355ffff));
         let stroke = scene.encode_stroke(&self.stroke);
 
         let clip = scene.encode_path(&self.paths[0]);
@@ -124,7 +121,6 @@ impl Fixture {
             18.0,
             &self.glyphs,
             &options,
-            self.variations.len() as u32,
         );
         scene.encode_glyphs(run, root, solid);
         scene.encode_pop_layer(layer);

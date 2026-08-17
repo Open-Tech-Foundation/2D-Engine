@@ -93,6 +93,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `strokes`, `dash_data` and `variations` beyond the Doc 02 §2 sketch),
   resolving a contradiction between Doc 02 §2 and §3. Closed Q-02 (AVX2,
   runtime-dispatched, scalar fallback) and Q-08 (wasm is not a v1 target).
+- **T1.4** — `SceneBuilder` and encode-time validation, Doc 02 §5. `fill`,
+  `stroke`, `draw_glyphs`, `draw_image`, `push_layer`/`pop_layer`,
+  `push_node`/`reuse_node`, plus `intern_stops` and `intern_variations` for the
+  runs gradients and variable fonts name by handle. No `save`, no `restore`, no
+  current point, no current paint: every call carries everything it needs
+  (I-3). The builder holds a fixed-size layer stack rather than a `Vec`, so
+  encoding a frame allocates nothing (I-9) — tested through the public API, not
+  just the raw encoder. Every `EncodeError` variant is reachable and has a test
+  asserting that specific error. Two structural guarantees back I-8 beyond the
+  per-argument checks: dropping a builder closes any layers left open, and
+  `NodeScope` derefs to the builder so an unbalanced node cannot be written.
+  The fuzz target drives random sequences of builder calls, including handles
+  that name nothing and coordinates that are `NaN` or infinite, and asserts
+  that nothing panics and that the resulting scene passes full structural
+  validation — across `reset` boundaries too. `reuse_node` returns false until
+  the node cache lands in M6, so consumers can write the cache-aware shape now.
+  Decided D-23 (`StopsRef`/`VariationsRef` index run tables so a handle carries
+  its own length), D-24 (`NodeScope` derefs to the builder, resolving a
+  borrow-check contradiction in Doc 03 §3's sketch) and D-25 (a dropped builder
+  closes open layers).
 
 ### Fixed
 

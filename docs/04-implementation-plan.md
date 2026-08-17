@@ -352,6 +352,9 @@ Settled. Do not relitigate; if a task appears to require violating one, **stop a
 | D-20 | Vector fidelity is partial, with rasterization fallback | Blur and filters have no PDF equivalent; Skia and Cairo do the same |
 | D-21 | `Scene` stores coordinates as `f64`; narrowing to `f32` happens in stage 2 | Doc 02 §2 and §3 contradicted each other. §3 carries the rationale — world coordinates are unbounded, a page can be 100k logical pixels tall — and D-17/D-18 depend on stage 2's input being device-independent. Costs 2× on `path_data` only |
 | D-22 | The arena carries `path_verbs`, `strokes`, `dash_data` and `variations` buffers beyond the Doc 02 §2 sketch | `StrokeStyle`, `Dash` and `VariationsRef` are in the documented public API (Doc 02 §5, §6) and have nowhere else to live. Same SoA rules apply |
+| D-23 | `StopsRef` and `VariationsRef` index run tables (`stop_runs`, `variation_runs`) rather than the data buffers directly | A handle that does not carry its own length forces the caller to pass the count alongside it, and a mismatched pair is a bounds error nothing can catch. The alternative — the builder keeping a side table — would allocate per frame and break I-9 |
+| D-24 | `NodeScope` derefs to the builder instead of coexisting with it | Doc 03 §3's sketch is RAII (`hash on drop`) but its usage example keeps using `sb` while the scope is alive, which cannot borrow-check. Deref makes the scope *be* the builder for the subtree, keeping RAII and making an unbalanced node unrepresentable. The node hash itself stays `UNSET` until M6 defines what the cache hashes |
+| D-25 | Dropping a `SceneBuilder` closes any layers still open; `finish()` reports that it had to | I-8 says a scene that encoded never panics downstream. An unbalanced layer stack reaching stage 6 is a panic or a leaked scratch buffer, and a consumer that unwound past its `pop_layer` cannot be relied on to clean up |
 
 ---
 

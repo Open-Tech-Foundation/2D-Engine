@@ -191,6 +191,21 @@ pub struct PaintDesc {
     pub transform: u32,
 }
 
+/// A contiguous run inside a densely packed buffer. 8 bytes.
+///
+/// `StopsRef` and `VariationsRef` index a table of these rather than the data
+/// buffer directly, so a handle carries its own length. Without it a consumer
+/// would have to pass the length alongside every handle, and a mismatched pair
+/// would be a bounds error nothing could catch.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Zeroable, Pod)]
+#[repr(C)]
+pub struct RunRec {
+    /// First element.
+    pub offset: u32,
+    /// Element count.
+    pub len: u32,
+}
+
 /// One gradient stop. 24 bytes.
 #[derive(Debug, Clone, Copy, PartialEq, Default, Zeroable, Pod)]
 #[repr(C)]
@@ -310,6 +325,7 @@ mod tests {
         assert_eq!(size_of::<TransformRec>(), 48);
         assert_eq!(size_of::<PaintDesc>(), 96);
         assert_eq!(size_of::<ColorStopRec>(), 24);
+        assert_eq!(size_of::<RunRec>(), 8);
         assert_eq!(size_of::<StrokeDesc>(), 32);
         assert_eq!(size_of::<GlyphRunDesc>(), 40);
         assert_eq!(size_of::<GlyphRec>(), 12);

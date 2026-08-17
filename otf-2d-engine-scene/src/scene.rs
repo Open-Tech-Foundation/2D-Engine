@@ -26,7 +26,7 @@ use crate::handles::{
 };
 use crate::records::{
     ColorStopRec, DrawKind, DrawTag, FLAG_EVEN_ODD, GlyphRec, GlyphRunDesc, JOIN_BEVEL, JOIN_MITER,
-    JOIN_ROUND, LayerDesc, NodeDesc, PAINT_FLAG_HAS_FOCAL, PaintDesc, PaintKind, PathDesc,
+    JOIN_ROUND, LayerDesc, NodeDesc, PAINT_FLAG_HAS_FOCAL, PaintDesc, PaintKind, PathDesc, RunRec,
     ShapeKind, StrokeDesc, TransformRec,
 };
 use crate::style::{ColorStop, FillRule, Glyph, GlyphOptions, Join, Paint, Sampling, StrokeStyle};
@@ -60,8 +60,10 @@ pub struct Scene {
     pub(crate) transforms: Vec<TransformRec>,
     /// Paints: solid, gradient, image.
     pub(crate) paints: Vec<PaintDesc>,
-    /// Gradient stop runs, densely packed.
+    /// Gradient stops, densely packed. Runs are delimited by `stop_runs`.
     pub(crate) stops: Vec<ColorStopRec>,
+    /// One entry per interned stop run. Indexed by [`StopsRef`].
+    pub(crate) stop_runs: Vec<RunRec>,
     /// Stroke styles.
     pub(crate) strokes: Vec<StrokeDesc>,
     /// Dash patterns, densely packed.
@@ -72,6 +74,8 @@ pub struct Scene {
     pub(crate) glyphs: Vec<GlyphRec>,
     /// Variable-font axis coordinates, densely packed.
     pub(crate) variations: Vec<f32>,
+    /// One entry per interned variation run. Indexed by [`VariationsRef`].
+    pub(crate) variation_runs: Vec<RunRec>,
     /// Layer push/pop records.
     pub(crate) layers: Vec<LayerDesc>,
     /// Content hashes for structural sharing (Doc 03 §3). Reserved until M6.
@@ -92,11 +96,13 @@ pub struct SceneMemory {
     pub transforms: usize,
     pub paints: usize,
     pub stops: usize,
+    pub stop_runs: usize,
     pub strokes: usize,
     pub dash_data: usize,
     pub glyph_runs: usize,
     pub glyphs: usize,
     pub variations: usize,
+    pub variation_runs: usize,
     pub layers: usize,
     pub nodes: usize,
 }
@@ -111,11 +117,13 @@ impl SceneMemory {
             + self.transforms
             + self.paints
             + self.stops
+            + self.stop_runs
             + self.strokes
             + self.dash_data
             + self.glyph_runs
             + self.glyphs
             + self.variations
+            + self.variation_runs
             + self.layers
             + self.nodes
     }
@@ -165,11 +173,13 @@ impl Scene {
         self.transforms.clear();
         self.paints.clear();
         self.stops.clear();
+        self.stop_runs.clear();
         self.strokes.clear();
         self.dash_data.clear();
         self.glyph_runs.clear();
         self.glyphs.clear();
         self.variations.clear();
+        self.variation_runs.clear();
         self.layers.clear();
         self.node_hashes.clear();
         self.node_descs.clear();
@@ -196,11 +206,13 @@ impl Scene {
             transforms: bytes(&self.transforms),
             paints: bytes(&self.paints),
             stops: bytes(&self.stops),
+            stop_runs: bytes(&self.stop_runs),
             strokes: bytes(&self.strokes),
             dash_data: bytes(&self.dash_data),
             glyph_runs: bytes(&self.glyph_runs),
             glyphs: bytes(&self.glyphs),
             variations: bytes(&self.variations),
+            variation_runs: bytes(&self.variation_runs),
             layers: bytes(&self.layers),
             nodes: bytes(&self.node_hashes) + bytes(&self.node_descs),
         }
@@ -267,6 +279,18 @@ impl Scene {
     #[inline]
     pub fn layers(&self) -> &[LayerDesc] {
         &self.layers
+    }
+
+    /// The interned gradient stop runs. Indexed by [`StopsRef`].
+    #[inline]
+    pub fn stop_runs(&self) -> &[RunRec] {
+        &self.stop_runs
+    }
+
+    /// The interned variation runs. Indexed by [`VariationsRef`].
+    #[inline]
+    pub fn variation_runs(&self) -> &[RunRec] {
+        &self.variation_runs
     }
 
     #[inline]
@@ -371,11 +395,13 @@ impl Scene {
         hasher.write(bytemuck::cast_slice(&self.transforms));
         hasher.write(bytemuck::cast_slice(&self.paints));
         hasher.write(bytemuck::cast_slice(&self.stops));
+        hasher.write(bytemuck::cast_slice(&self.stop_runs));
         hasher.write(bytemuck::cast_slice(&self.strokes));
         hasher.write(bytemuck::cast_slice(&self.dash_data));
         hasher.write(bytemuck::cast_slice(&self.glyph_runs));
         hasher.write(bytemuck::cast_slice(&self.glyphs));
         hasher.write(bytemuck::cast_slice(&self.variations));
+        hasher.write(bytemuck::cast_slice(&self.variation_runs));
         hasher.write(bytemuck::cast_slice(&self.layers));
         hasher.write(bytemuck::cast_slice(&self.node_hashes));
         hasher.write(bytemuck::cast_slice(&self.node_descs));
@@ -526,7 +552,10 @@ impl Scene {
         TransformRef::new((self.transforms.len() - 1) as u32)
     }
 
-    /// Appends a run of gradient stops.
+    /// Appends a run of gradient stops and returns a handle to the run.
+    ///
+    /// The handle indexes `stop_runs`, not `stops`, so it carries its own
+    /// length: a caller can never pair a handle with the wrong count.
     pub fn encode_stops(&mut self, stops: &[ColorStop]) -> StopsRef {
         let offset = self.stops.len() as u32;
         self.stops.extend(stops.iter().map(|s| ColorStopRec {
@@ -534,19 +563,25 @@ impl Scene {
             color: s.color.to_premul(),
             color_space: color_space_to_u32(s.color.space),
         }));
-        // The run's length rides in the paint that references it, so the
-        // handle is just the start index.
-        StopsRef::new(offset)
+        self.stop_runs.push(RunRec {
+            offset,
+            len: stops.len() as u32,
+        });
+        StopsRef::new((self.stop_runs.len() - 1) as u32)
     }
 
-    /// Appends variable-font axis coordinates.
+    /// Appends variable-font axis coordinates and returns a handle to the run.
     pub fn encode_variations(&mut self, coords: &[f32]) -> VariationsRef {
         if coords.is_empty() {
             return VariationsRef::NONE;
         }
         let offset = self.variations.len() as u32;
         self.variations.extend_from_slice(coords);
-        VariationsRef::new(offset)
+        self.variation_runs.push(RunRec {
+            offset,
+            len: coords.len() as u32,
+        });
+        VariationsRef::new((self.variation_runs.len() - 1) as u32)
     }
 
     /// Appends a path's verbs, points, bounds and shape hint.
@@ -585,9 +620,18 @@ impl Scene {
 
     /// Appends a paint, reusing a recent identical entry when there is one.
     ///
-    /// `stops_len` is supplied separately because [`StopsRef`] carries only
-    /// the run's start.
-    pub fn encode_paint(&mut self, paint: &Paint, stops_len: u32) -> PaintRef {
+    /// A gradient's [`StopsRef`] is resolved against `stop_runs` here. A handle
+    /// that names no run — only constructible through the raw
+    /// [`StopsRef::new`], which is not how consumers build scenes — resolves to
+    /// an empty run rather than an out-of-range one.
+    pub fn encode_paint(&mut self, paint: &Paint) -> PaintRef {
+        let run = |scene: &Self, handle: StopsRef| {
+            handle
+                .get()
+                .and_then(|i| scene.stop_runs.get(i))
+                .copied()
+                .unwrap_or_default()
+        };
         let desc = match *paint {
             Paint::Solid(color) => PaintDesc {
                 kind: PaintKind::Solid.to_u32(),
@@ -613,8 +657,8 @@ impl Scene {
                 flags: 0,
                 color: [0.0; 4],
                 geometry: [start.x, start.y, end.x, end.y, 0.0, 0.0],
-                stops_offset: stops.index(),
-                stops_len,
+                stops_offset: run(self, stops).offset,
+                stops_len: run(self, stops).len,
                 image: NO_REF,
                 transform: NO_REF,
             },
@@ -637,8 +681,8 @@ impl Scene {
                     },
                     color: [0.0; 4],
                     geometry: [center.x, center.y, radius, f.x, f.y, 0.0],
-                    stops_offset: stops.index(),
-                    stops_len,
+                    stops_offset: run(self, stops).offset,
+                    stops_len: run(self, stops).len,
                     image: NO_REF,
                     transform: NO_REF,
                 }
@@ -706,7 +750,6 @@ impl Scene {
         size: f32,
         glyphs: &[Glyph],
         options: &GlyphOptions,
-        variations_len: u32,
     ) -> GlyphRunRef {
         let glyph_offset = self.glyphs.len() as u32;
         self.glyphs.extend(glyphs.iter().map(|g| GlyphRec {
@@ -714,17 +757,19 @@ impl Scene {
             x: g.x,
             y: g.y,
         }));
-        let (variations_offset, variations_len) = match options.variations.get() {
-            Some(offset) => (offset as u32, variations_len),
-            None => (0, 0),
-        };
+        let variations = options
+            .variations
+            .get()
+            .and_then(|i| self.variation_runs.get(i))
+            .copied()
+            .unwrap_or_default();
         self.glyph_runs.push(GlyphRunDesc {
             font: font.index(),
             size,
             glyph_offset,
             glyph_len: glyphs.len() as u32,
-            variations_offset,
-            variations_len,
+            variations_offset: variations.offset,
+            variations_len: variations.len,
             synthetic_bold: options.synthetic_bold,
             synthetic_skew: options.synthetic_skew,
             hinting: options.hinting as u32,
@@ -796,14 +841,11 @@ impl Scene {
         sampling: Sampling,
         alpha: f32,
     ) {
-        let paint = self.encode_paint(
-            &Paint::Image {
-                image,
-                sampling,
-                transform,
-            },
-            0,
-        );
+        let paint = self.encode_paint(&Paint::Image {
+            image,
+            sampling,
+            transform,
+        });
         // Alpha travels as a premultiplied white so the fine loop needs no
         // separate per-draw opacity field.
         self.paints[paint.index() as usize].color = [alpha, alpha, alpha, alpha];
@@ -892,22 +934,32 @@ impl Scene {
         }
     }
 
+    /// The stops behind a handle, or an empty slice for an unknown one.
+    pub fn stops_of(&self, handle: StopsRef) -> &[ColorStopRec] {
+        let Some(run) = handle.get().and_then(|i| self.stop_runs.get(i)) else {
+            return &[];
+        };
+        let start = run.offset as usize;
+        self.stops
+            .get(start..start.saturating_add(run.len as usize))
+            .unwrap_or(&[])
+    }
+
+    /// The variation coordinates behind a handle, or an empty slice.
+    pub fn variations_of(&self, handle: VariationsRef) -> &[f32] {
+        let Some(run) = handle.get().and_then(|i| self.variation_runs.get(i)) else {
+            return &[];
+        };
+        let start = run.offset as usize;
+        self.variations
+            .get(start..start.saturating_add(run.len as usize))
+            .unwrap_or(&[])
+    }
+
     /// The number of layer records, so a builder can tell whether any are open.
     #[inline]
     pub fn layer_count(&self) -> usize {
         self.layers.len()
-    }
-
-    /// The number of stops encoded so far, so a builder can compute run lengths.
-    #[inline]
-    pub fn stop_count(&self) -> usize {
-        self.stops.len()
-    }
-
-    /// The number of variation coordinates encoded so far.
-    #[inline]
-    pub fn variation_count(&self) -> usize {
-        self.variations.len()
     }
 }
 

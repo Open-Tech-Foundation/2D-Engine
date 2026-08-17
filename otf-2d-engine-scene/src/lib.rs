@@ -8,6 +8,7 @@
 
 extern crate alloc;
 
+mod builder;
 mod handles;
 mod records;
 mod scene;
@@ -15,13 +16,16 @@ mod serialize;
 mod style;
 mod unit;
 
+pub use builder::{
+    EncodeError, MAX_GLYPHS_PER_RUN, MAX_LAYER_DEPTH, MAX_PATH_POINTS, NodeScope, SceneBuilder,
+};
 pub use handles::{
     FontRef, GlyphRunRef, ImageRef, LayerRef, NO_REF, NodeHash, NodeId, PaintRef, PathRef,
     StopsRef, StrokeRef, TransformRef, VariationsRef,
 };
 pub use records::{
     ColorStopRec, DrawKind, DrawTag, FLAG_EVEN_ODD, GlyphRec, GlyphRunDesc, JOIN_BEVEL, JOIN_MITER,
-    JOIN_ROUND, LayerDesc, NodeDesc, PAINT_FLAG_HAS_FOCAL, PaintDesc, PaintKind, PathDesc,
+    JOIN_ROUND, LayerDesc, NodeDesc, PAINT_FLAG_HAS_FOCAL, PaintDesc, PaintKind, PathDesc, RunRec,
     ShapeKind, StrokeDesc, TransformRec,
 };
 pub use scene::{PathView, Scene, SceneMemory, color_from_record, color_space_from_u32};

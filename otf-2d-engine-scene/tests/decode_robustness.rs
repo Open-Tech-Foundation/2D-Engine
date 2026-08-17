@@ -20,16 +20,13 @@ fn sample_scene() -> Scene {
         ColorStop::new(0.0, Color::from_srgb8(255, 0, 0, 255)),
         ColorStop::new(1.0, Color::from_srgb8(0, 0, 255, 255)),
     ]);
-    let gradient = scene.encode_paint(
-        &Paint::LinearGradient {
-            start: Point::new(0.0, 0.0),
-            end: Point::new(32.0, 0.0),
-            stops,
-            extend: Extend::Pad,
-        },
-        2,
-    );
-    let solid = scene.encode_paint(&Paint::hex(0x112233ff), 0);
+    let gradient = scene.encode_paint(&Paint::LinearGradient {
+        start: Point::new(0.0, 0.0),
+        end: Point::new(32.0, 0.0),
+        stops,
+        extend: Extend::Pad,
+    });
+    let solid = scene.encode_paint(&Paint::hex(0x112233ff));
     let stroke = scene.encode_stroke(&StrokeStyle::new(3.0));
 
     let rect = scene.encode_path(
@@ -61,7 +58,6 @@ fn sample_scene() -> Scene {
             variations,
             ..GlyphOptions::default()
         },
-        1,
     );
     scene.encode_glyphs(run, transform, solid);
     scene.encode_pop_layer(layer);
@@ -145,7 +141,7 @@ proptest! {
         let unit = SceneUnit::from_u8(unit).expect("0..4 are the four units");
         let mut scene = Scene::with_unit(unit);
         scene.encode_transform(Affine::translate(Vec2::new(1.0, 2.0)));
-        scene.encode_paint(&Paint::hex(0x00ff00ff), 0);
+        scene.encode_paint(&Paint::hex(0x00ff00ff));
 
         let round = Scene::from_bytes(&scene.to_bytes()).expect("decode");
         prop_assert_eq!(round.content_hash(), scene.content_hash());
