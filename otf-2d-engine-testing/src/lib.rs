@@ -3,8 +3,11 @@
 //! This crate is `publish = false` and appears only as a dev-dependency. It is
 //! outside the closed v1 dependency list in Doc 02 §1, which governs what the
 //! shipped crates link against.
-#![forbid(unsafe_code)]
+#![deny(unsafe_code)]
+// `alloc` implements `GlobalAlloc`, which is unsafe by definition. Scoped to
+// that one module; every other module here is still `deny`.
 
+pub mod alloc;
 pub mod bench;
 pub mod golden;
 pub mod image;

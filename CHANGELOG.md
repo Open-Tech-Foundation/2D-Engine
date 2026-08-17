@@ -67,3 +67,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   inverted from `to_xyz` rather than transcribed. `BlendMode` is
   `#[non_exhaustive]` with only the `SrcOver` v1 supports, so M6 can add the
   Porter-Duff set without a breaking change. Builds `no_std` with `libm`.
+- **T1.3** — `otf-2d-engine-scene`: the scene arena from Doc 02 §2. Fifteen
+  structure-of-arrays buffers joined by `u32` handles and no pointers (I-2),
+  no interior mutability (I-1), and `Send + Sync` proved with
+  `static_assertions` rather than by running it on a thread. `reset` clears
+  every buffer while retaining its allocation and preserves the `SceneUnit`,
+  which is a property of the surface and not of the frame; a 1000-draw scene
+  re-encoded after `reset` performs zero allocations and zero reallocations,
+  measured by a counting global allocator now living in
+  `otf-2d-engine-testing`. `NodeId`, `NodeHash` and the `node_descs` buffer
+  are written from here but unread until the node cache in M6 (Doc 03 §9) —
+  they cannot be retrofitted without changing the layout. Public value types
+  (`Paint`, `StrokeStyle`, `Dash`, `Glyph`, `GlyphOptions`, `FillRule`,
+  `Extend`, `Sampling`, `Join`, `Cap`, `Hinting`) accompany the `#[repr(C)]`
+  `Pod` records they encode into, whose sizes are pinned by test.
+  `content_hash` folds every buffer and the unit through `FxHasher` in one
+  pass. `to_bytes`/`from_bytes` serialise the arena as a header plus one
+  `memcpy` per buffer; the round trip preserves `content_hash` exactly.
+  Decoding is total: the header carries a format version, an endianness
+  sentinel and a record-layout fingerprint, and every handle in the payload is
+  bounds-checked, so a corrupted cache entry produces a `SceneDecodeError`
+  rather than a scene that faults in stage 2. Property tests corrupt, truncate
+  and forge bytes to hold that line. Decided D-21 (`Scene` stores coordinates
+  as `f64`; stage 2 narrows) and D-22 (the arena carries `path_verbs`,
+  `strokes`, `dash_data` and `variations` beyond the Doc 02 §2 sketch),
+  resolving a contradiction between Doc 02 §2 and §3. Closed Q-02 (AVX2,
+  runtime-dispatched, scalar fallback) and Q-08 (wasm is not a v1 target).
+
+### Fixed
+
+- `otf-2d-engine-raster`, `-cpu`, `-cache`, `-text` and the `otf-2d-engine`
+  facade now forward `std` and `libm` to their dependencies. Without it, the
+  workspace only built because feature unification across `--workspace` turned
+  `std` on for `-geom` and `-color`; building any one of those crates on its
+  own — which is what `cargo bench -p otf-2d-engine-bench` does — hit the
+  "needs float math" `compile_error!`.

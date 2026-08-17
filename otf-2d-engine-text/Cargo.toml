@@ -8,5 +8,12 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 
+[features]
+default = ["std"]
+# Every crate forwards `std` and `libm` rather than deciding for itself: a
+# consumer picks a float-math backend once, at the top of the tree.
+std = ["otf-2d-engine-scene/std"]
+libm = ["otf-2d-engine-scene/libm"]
+
 [dependencies]
 otf-2d-engine-scene.workspace = true

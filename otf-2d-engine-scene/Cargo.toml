@@ -21,4 +21,6 @@ smallvec = { workspace = true, features = ["union", "const_generics"] }
 rustc-hash.workspace = true
 
 [dev-dependencies]
+otf-2d-engine-testing.workspace = true
+proptest.workspace = true
 static_assertions.workspace = true

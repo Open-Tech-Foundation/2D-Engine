@@ -25,9 +25,9 @@ authors = ["Open Tech Foundation"]
 otf-2d-engine-geom = { path = "otf-2d-engine-geom", version = "0.0.0", default-features = false }
 otf-2d-engine-color = { path = "otf-2d-engine-color", version = "0.0.0", default-features = false }
 otf-2d-engine-scene = { path = "otf-2d-engine-scene", version = "0.0.0", default-features = false }
-otf-2d-engine-raster = { path = "otf-2d-engine-raster", version = "0.0.0" }
-otf-2d-engine-cpu = { path = "otf-2d-engine-cpu", version = "0.0.0" }
-otf-2d-engine-cache = { path = "otf-2d-engine-cache", version = "0.0.0" }
+otf-2d-engine-raster = { path = "otf-2d-engine-raster", version = "0.0.0", default-features = false }
+otf-2d-engine-cpu = { path = "otf-2d-engine-cpu", version = "0.0.0", default-features = false }
+otf-2d-engine-cache = { path = "otf-2d-engine-cache", version = "0.0.0", default-features = false }
 otf-2d-engine = { path = "otf-2d-engine", version = "0.0.0" }
 
 bytemuck = { version = "1", default-features = false }

@@ -350,6 +350,8 @@ Settled. Do not relitigate; if a task appears to require violating one, **stop a
 | D-18 | Stage 2 output is resolution-independent | Prerequisite for D-17 |
 | D-19 | `SceneUnit` on the scene; vector backends reject `Logical` | Guessing a physical unit produces silently wrong output on paper |
 | D-20 | Vector fidelity is partial, with rasterization fallback | Blur and filters have no PDF equivalent; Skia and Cairo do the same |
+| D-21 | `Scene` stores coordinates as `f64`; narrowing to `f32` happens in stage 2 | Doc 02 §2 and §3 contradicted each other. §3 carries the rationale — world coordinates are unbounded, a page can be 100k logical pixels tall — and D-17/D-18 depend on stage 2's input being device-independent. Costs 2× on `path_data` only |
+| D-22 | The arena carries `path_verbs`, `strokes`, `dash_data` and `variations` buffers beyond the Doc 02 §2 sketch | `StrokeStyle`, `Dash` and `VariationsRef` are in the documented public API (Doc 02 §5, §6) and have nowhere else to live. Same SoA rules apply |
 
 ---
 
@@ -360,10 +362,10 @@ Human decisions. **Stop and ask** if a task requires one that is unresolved.
 | # | Question | Blocks |
 |---|---|---|
 | Q-01 | Tile strip height and wide-tile width | T2.1 — start 4/256, must remain parameters |
-| Q-02 | x86-64 SIMD baseline: SSE4.2 or AVX2 | T2.4 |
+| ~~Q-02~~ | ~~x86-64 SIMD baseline: SSE4.2 or AVX2~~ | **Closed:** AVX2, runtime-dispatched, with the T2.3 scalar path as the fallback. T2.4 asks for one target; I-5 makes every extra SIMD path an extra bit-identity obligation. SSE4.2 may be added in M8 |
 | Q-03 | `skrifa` or own font parsing | T4.1 — recommend `skrifa` |
 | Q-04 | Vertical subpixel glyph buckets | T4.3 — 4× cache cost, measure first |
 | ~~Q-05~~ | ~~Which consumer supplies scene traces~~ | **Closed:** `Web-App-Framework`. Confirm the recording harness lands during M4 |
 | ~~Q-06~~ | ~~Licence~~ | **Closed:** MIT or Apache-2.0, matching org convention. Pick one at T0.1 |
 | ~~Q-07~~ | ~~Public or internal~~ | **Closed:** public. Doc 02 §8 stability policy is a public commitment |
-| Q-08 | Is wasm a target, and when | T2.4 — affects threading and dispatch |
+| ~~Q-08~~ | ~~Is wasm a target, and when~~ | **Closed:** not in v1; M8 as already planned. D-16's caller-supplied pool already covers single-threaded wasm, and SIMD128 is a compile-time feature rather than runtime dispatch, so nothing is retrofitted by deferring |

@@ -416,6 +416,8 @@ dependencies = [
  "bytemuck",
  "otf-2d-engine-color",
  "otf-2d-engine-geom",
+ "otf-2d-engine-testing",
+ "proptest",
  "rustc-hash",
  "smallvec",
  "static_assertions",
