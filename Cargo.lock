@@ -439,6 +439,7 @@ dependencies = [
  "otf-2d-engine-geom",
  "otf-2d-engine-scene",
  "otf-2d-engine-testing",
+ "proptest",
  "smallvec",
  "static_assertions",
 ]

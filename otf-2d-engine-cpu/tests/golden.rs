@@ -12,7 +12,7 @@
 mod support;
 
 use otf_2d_engine_geom::{Affine, PathBuilder, Point, Rect, RectRadii, Vec2};
-use otf_2d_engine_scene::{FillRule, SceneBuilder};
+use otf_2d_engine_scene::{Cap, FillRule, Join, SceneBuilder, StrokeStyle};
 use otf_2d_engine_testing::golden::{GoldenCase, GoldenSuite};
 use otf_2d_engine_testing::image::Image;
 
@@ -215,6 +215,134 @@ fn suite() -> GoldenSuite {
                         &PathBuilder::new().circle(Point::new(x + 4.0, y + 4.0), 4.2).build());
                 }
             }
+        };
+
+        // ---- Strokes (T3.2) ----
+        stroke_caps (SIZE, SIZE) = |sb: &mut SceneBuilder<'_>| {
+            for (index, cap) in [Cap::Butt, Cap::Round, Cap::Square].into_iter().enumerate() {
+                let y = 24.0 + index as f64 * 24.0;
+                let mut b = PathBuilder::new();
+                b.move_to(Point::new(24.0, y));
+                b.line_to(Point::new(72.0, y));
+                let _ = sb.stroke(
+                    &StrokeStyle::new(11.0).with_caps(cap),
+                    Affine::IDENTITY, &ink(), &b.build());
+            }
+        };
+        stroke_joins (SIZE, SIZE) = |sb: &mut SceneBuilder<'_>| {
+            let joins = [Join::Miter { limit: 4.0 }, Join::Round, Join::Bevel];
+            for (index, join) in joins.into_iter().enumerate() {
+                let x = 12.0 + index as f64 * 28.0;
+                let mut b = PathBuilder::new();
+                b.move_to(Point::new(x, 76.0));
+                b.line_to(Point::new(x + 11.0, 24.0));
+                b.line_to(Point::new(x + 22.0, 76.0));
+                let _ = sb.stroke(
+                    &StrokeStyle::new(9.0).with_join(join),
+                    Affine::IDENTITY, &ink(), &b.build());
+            }
+        };
+        stroke_miter_limit (SIZE, SIZE) = |sb: &mut SceneBuilder<'_>| {
+            // The left hairpin is inside the limit and spikes; the right one
+            // is past it and gets a bevel instead.
+            // The corner's spike is 2.46 half-widths long, so a limit of
+            // three keeps it and a limit of two throws it away for a bevel.
+            for (index, limit) in [3.0f32, 2.0].into_iter().enumerate() {
+                let x = 4.0 + index as f64 * 46.0;
+                let mut b = PathBuilder::new();
+                b.move_to(Point::new(x, 32.0));
+                b.line_to(Point::new(x + 36.0, 48.0));
+                b.line_to(Point::new(x, 64.0));
+                let _ = sb.stroke(
+                    &StrokeStyle::new(8.0).with_join(Join::Miter { limit }),
+                    Affine::IDENTITY, &ink(), &b.build());
+            }
+        };
+        stroke_self_intersecting (SIZE, SIZE) = |sb: &mut SceneBuilder<'_>| {
+            // A pentagram: one closed subpath that crosses itself five times,
+            // and every crossing is painted once, not twice.
+            let _ = sb.stroke(
+                &StrokeStyle::new(6.0).with_join(Join::Miter { limit: 4.0 }),
+                Affine::IDENTITY, &ink(), &star((48.0, 50.0), 40.0, 5));
+        };
+        stroke_self_intersecting_curves (SIZE, SIZE) = |sb: &mut SceneBuilder<'_>| {
+            // The same, with curves: a lemniscate crosses itself at the middle.
+            let mut b = PathBuilder::new();
+            b.move_to(Point::new(48.0, 48.0));
+            b.curve_to(Point::new(84.0, 12.0), Point::new(96.0, 60.0), Point::new(48.0, 48.0));
+            b.curve_to(Point::new(0.0, 36.0), Point::new(12.0, 84.0), Point::new(48.0, 48.0));
+            b.close();
+            let _ = sb.stroke(
+                &StrokeStyle::new(7.0).with_join(Join::Round).with_caps(Cap::Round),
+                Affine::IDENTITY, &ink(), &b.build());
+        };
+        stroke_doubled_back (SIZE, SIZE) = |sb: &mut SceneBuilder<'_>| {
+            // Out and back along the same line, then the same for a curve.
+            let mut b = PathBuilder::new();
+            b.move_to(Point::new(20.0, 30.0));
+            b.line_to(Point::new(76.0, 30.0));
+            b.line_to(Point::new(20.0, 30.0));
+            b.move_to(Point::new(20.0, 66.0));
+            b.quad_to(Point::new(48.0, 40.0), Point::new(76.0, 66.0));
+            b.quad_to(Point::new(48.0, 40.0), Point::new(20.0, 66.0));
+            let _ = sb.stroke(
+                &StrokeStyle::new(9.0).with_caps(Cap::Round),
+                Affine::IDENTITY, &ink(), &b.build());
+        };
+        stroke_tighter_than_its_width (SIZE, SIZE) = |sb: &mut SceneBuilder<'_>| {
+            // Half the width is past the centre of curvature, so the inner
+            // side of the outline turns itself inside out.
+            let _ = sb.stroke(
+                &StrokeStyle::new(34.0).with_join(Join::Round),
+                Affine::IDENTITY, &ink(),
+                &PathBuilder::new().circle(Point::new(48.0, 48.0), 10.0).build());
+        };
+        stroke_curve_and_corner (SIZE, SIZE) = |sb: &mut SceneBuilder<'_>| {
+            let mut b = PathBuilder::new();
+            b.move_to(Point::new(14.0, 76.0));
+            b.curve_to(Point::new(14.0, 20.0), Point::new(58.0, 20.0), Point::new(58.0, 48.0));
+            b.line_to(Point::new(84.0, 20.0));
+            let _ = sb.stroke(
+                &StrokeStyle::new(8.0).with_join(Join::Round).with_caps(Cap::Round),
+                Affine::IDENTITY, &ink(), &b.build());
+        };
+        stroke_closed_ring (SIZE, SIZE) = |sb: &mut SceneBuilder<'_>| {
+            let _ = sb.stroke(
+                &StrokeStyle::new(10.0),
+                Affine::IDENTITY, &ink(),
+                &PathBuilder::new()
+                    .rounded_rect(Rect::new(18.5, 18.5, 77.5, 77.5), RectRadii::uniform(14.0))
+                    .build());
+        };
+        stroke_dot (SIZE, SIZE) = |sb: &mut SceneBuilder<'_>| {
+            // Subpaths with no length: a round cap makes a disc, a square cap
+            // a square, and a butt cap nothing at all.
+            for (index, cap) in [Cap::Round, Cap::Square, Cap::Butt].into_iter().enumerate() {
+                let mut b = PathBuilder::new();
+                b.move_to(Point::new(24.0 + index as f64 * 24.0, 48.0));
+                b.close();
+                let _ = sb.stroke(
+                    &StrokeStyle::new(16.0).with_caps(cap),
+                    Affine::IDENTITY, &ink(), &b.build());
+            }
+        };
+        stroke_under_a_transform (SIZE, SIZE) = |sb: &mut SceneBuilder<'_>| {
+            // A stroke is carried by the transform like everything else, so an
+            // uneven scale strokes with an ellipse rather than a circle.
+            let mut b = PathBuilder::new();
+            b.move_to(Point::new(8.0, 20.0));
+            b.line_to(Point::new(40.0, 8.0));
+            b.line_to(Point::new(40.0, 32.0));
+            let _ = sb.stroke(
+                &StrokeStyle::new(5.0).with_join(Join::Round).with_caps(Cap::Round),
+                Affine::new([2.0, 0.0, 0.0, 2.6, 6.0, 6.0]), &ink(), &b.build());
+        };
+        stroke_and_fill_together (SIZE, SIZE) = |sb: &mut SceneBuilder<'_>| {
+            let path = PathBuilder::new()
+                .circle(Point::new(48.0, 48.0), 28.0)
+                .build();
+            let _ = sb.fill(FillRule::NonZero, Affine::IDENTITY, &accent(), &path);
+            let _ = sb.stroke(&StrokeStyle::new(6.0), Affine::IDENTITY, &ink(), &path);
         };
     }
 

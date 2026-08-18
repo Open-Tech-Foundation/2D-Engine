@@ -343,6 +343,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   other. Left as it stands and recorded here: the segment count is what T3.1 is
   measured on and what stages 4 to 6 and everything after them pay for, and a
   cheaper fit is a change to the fit, not to what it decides.
+- **T3.2** — Stroke expansion. A stroke is the ground a pen covers carried
+  along a path, and its edge is the path's *parallel curve* on either side,
+  turned at corners and closed at the ends — so `otf-2d-engine-raster::stroke`
+  builds that edge as a filled outline and hands it to the same rasterizer a
+  fill uses. Not thick polylines: a quadrilateral per chord notches every bend
+  by an amount the tolerance does not control, and counts its winding twice
+  wherever a path crosses itself (`ci/invariants.sh` greps for the word).
+  The parallel curve of an Euler spiral is an easy curve to know things about,
+  and stage 3 has already fitted Euler spirals to the centre line: the offset
+  keeps the tangent direction, runs its arc length at `1 − r·κ` of the centre
+  line's, and has curvature `κ/(1 − r·κ)`. Curvature is linear by construction,
+  so where the offset turns over is the root of a linear function rather than a
+  search. Each centre-line spiral is cut there, and each piece has its own
+  spiral fitted to it by the argument T3.1 uses for a cubic — match the ends
+  and their tangents, read the gap as a graph over the shared chord, halve if
+  it is too wide — after which the same chord placement cuts it into segments
+  (D-52). Three approximations stack, and each is given its share of the
+  tolerance: a quarter to the centre-line fit, whatever it measures to the
+  parallel-curve fit, and the rest to the chords.
+  **Past the centre of curvature the parallel curve is not an edge at all**
+  (D-53). The pen has already swept that ground from the other side of the
+  bend, and following the curve there leaves a hole where two windings cancel —
+  a ring stroked wider than twice its own radius came out with its middle
+  punched out. What is an edge instead is the corner the neighbouring pieces
+  make when they run into each other, which is what the code emits in its
+  place: erode a rounded rectangle by more than its corner radius and the
+  corner comes back square, and this is that, in general.
+  Joins are emitted at every corner on **both** sides and left to the fill rule
+  (D-54): outside a bend the join is the shape the stroke has, and inside it is
+  a small loop the two parallel curves have already covered. Miter, round and
+  bevel are all there, with the miter falling back to a bevel past its limit —
+  `1/sin(θ/2)` half-widths, as CSS and SVG define it. Caps are butt, round and
+  square, and a subpath with no length is the shape its two caps enclose: a
+  disc under round caps, a square under square ones, nothing under butt.
+  A closed subpath becomes two contours and an open one becomes a single
+  contour closed by its caps (D-55), and both are filled non-zero, which is the
+  only rule that describes them — the two sides of a bend overlap, and even-odd
+  would punch the overlap back out.
+  Strokes are expanded in **path coordinates** and transformed on the way out,
+  exactly as fills are (D-56), so a path scaled twice over is stroked twice as
+  thick and one scaled unevenly is stroked by an ellipse. That is what a stroke
+  is, and what SVG and CSS mean by it.
+  **Sixteen raster-level tests** check the outline against what the shape is
+  worth on paper — a straight line against `length × width`, square and round
+  caps against what they add, a closed square against the ring around it, a
+  circle against `2πrw`, the two contours of a ring against each other's
+  winding, and a miter against the exact area its spike encloses. **Seven
+  analytic tests** check the same through the rasterizer, including the two
+  cases the fill rule exists for: a stroke doubled back along itself covers its
+  width once rather than twice, and a self-crossing stroke covers the union of
+  its arms rather than their sum. **Twelve golden cases** cover caps, joins,
+  the miter limit, a self-intersecting pentagram, a self-crossing lemniscate,
+  a stroke doubled back, a ring stroked wider than twice its radius, a curve
+  running into a corner, a closed ring, dots, an uneven transform, and a stroke
+  over a fill. A **proptest fuzz target** runs 3000 random paths against random
+  widths, joins, caps, transforms and tolerances — including zero, negative and
+  non-finite widths, degenerate transforms and repeated coordinates — and
+  asserts no panic and no coordinate that is not a real number.
+  A **`stroke` benchmark group** is registered: `polylines_1080p` 13.9 ms (896
+  joins, no curves), `rings_1080p` 40.8 ms (192 closed circles), and
+  `ribbons_1080p` 23.7 ms (curves with round joins and caps). The `fill` group
+  is unmoved by any of it, which took one correction to be true: the stroker's
+  buffers went into `Flattener` in front of the fields a fill reads on every
+  point it emits, and pushing them along cost 3% of a frame that never strokes
+  anything. They live at the end now.
 
 ### Changed
 

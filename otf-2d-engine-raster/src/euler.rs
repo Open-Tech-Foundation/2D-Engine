@@ -412,6 +412,57 @@ impl EulerSeg {
             self.p0.y + self.chord.y * x + self.chord.x * y,
         )
     }
+
+    /// The unit tangent at arc-length fraction `s`.
+    ///
+    /// The chord carries the spiral's orientation, so the tangent is the chord
+    /// turned by the angle the shape says — one rotation, no evaluation of the
+    /// integral.
+    pub fn tangent(&self, s: f64) -> Vec2 {
+        let (sn, cs) = (sin(self.params.theta(s)), cos(self.params.theta(s)));
+        let length = self.chord.length();
+        if !length.is_finite() || length <= 0.0 {
+            return Vec2::new(cs, sn);
+        }
+        let (ux, uy) = (self.chord.x / length, self.chord.y / length);
+        Vec2::new(ux * cs - uy * sn, uy * cs + ux * sn)
+    }
+
+    /// The curvature at arc-length fraction `s`, in the units `p0` is in.
+    ///
+    /// Positive turns left. It is linear in `s` — that is the whole definition
+    /// of the curve — which is why every question about an offset of it has a
+    /// closed-form answer.
+    pub fn curvature(&self, s: f64) -> f64 {
+        if !self.arc_len.is_finite() || self.arc_len <= 0.0 {
+            return 0.0;
+        }
+        (self.params.k0 + self.params.k1 * (s - 0.5)) / self.arc_len
+    }
+
+    /// The point on the parallel curve at signed distance `offset` to the left.
+    pub fn offset_point(&self, s: f64, offset: f64) -> Point {
+        let point = self.eval(s);
+        let tangent = self.tangent(s);
+        Point::new(point.x - offset * tangent.y, point.y + offset * tangent.x)
+    }
+
+    /// The same spiral walked the other way.
+    ///
+    /// Exact, and no second fit: reversing sends `u` to `−u`, which negates
+    /// `k0` and leaves `k1` alone, and `I` is even in `k0` so the chord's
+    /// direction and length relative to the shape do not move at all.
+    pub fn reversed(&self) -> EulerSeg {
+        EulerSeg {
+            p0: Point::new(self.p0.x + self.chord.x, self.p0.y + self.chord.y),
+            chord: Vec2::new(-self.chord.x, -self.chord.y),
+            params: EulerParams {
+                k0: -self.params.k0,
+                ..self.params
+            },
+            arc_len: self.arc_len,
+        }
+    }
 }
 
 /// The largest turn one line segment may span, in radians.
@@ -892,6 +943,71 @@ mod tests {
                     "invert(total) = {} at {th0}, {th1}",
                     density.invert(density.value())
                 );
+            }
+        }
+    }
+
+    #[test]
+    fn reversing_a_spiral_walks_the_same_curve_backwards() {
+        for first in -12..=12 {
+            for second in -12..=12 {
+                let (th0, th1) = (first as f64 * 0.07, second as f64 * 0.07);
+                let seg = EulerSeg::new(Point::new(3.0, -2.0), Point::new(53.0, 21.0), th0, th1);
+                let back = seg.reversed();
+                assert!(
+                    (back.arc_len - seg.arc_len).abs() <= 1e-12 * seg.arc_len,
+                    "arc length changed at {th0}, {th1}"
+                );
+                for step in 0..=10 {
+                    let s = step as f64 / 10.0;
+                    let there = seg.eval(s);
+                    let here = back.eval(1.0 - s);
+                    assert!(
+                        there.distance(here) <= 1e-9,
+                        "at {s} of {th0}, {th1}: {there:?} against {here:?}"
+                    );
+                    // The tangent turns round with the direction of travel.
+                    let forward = seg.tangent(s);
+                    let backward = back.tangent(1.0 - s);
+                    assert!(
+                        (forward.x + backward.x).abs() <= 1e-9
+                            && (forward.y + backward.y).abs() <= 1e-9,
+                        "tangent at {s} of {th0}, {th1}"
+                    );
+                    assert!(
+                        (seg.curvature(s) + back.curvature(1.0 - s)).abs()
+                            <= 1e-9 * (1.0 + seg.curvature(s).abs()),
+                        "curvature at {s} of {th0}, {th1}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_parallel_curve_keeps_its_distance() {
+        // The offset is a point at right angles to the tangent, so the gap to
+        // the curve is the offset itself — and the *nearest* point on the curve
+        // is that one, while the offset stays inside the radius of curvature.
+        for first in [-0.6f64, -0.2, 0.0, 0.3, 0.8] {
+            for second in [-0.6f64, -0.2, 0.0, 0.3, 0.8] {
+                let seg = EulerSeg::new(Point::new(0.0, 0.0), Point::new(80.0, 0.0), first, second);
+                for step in 0..=8 {
+                    let s = step as f64 / 8.0;
+                    let d = 3.0;
+                    if seg.curvature(s).abs() * d >= 0.5 {
+                        continue;
+                    }
+                    let point = seg.offset_point(s, d);
+                    let mut nearest = f64::INFINITY;
+                    for probe in 0..=4000 {
+                        nearest = nearest.min(point.distance(seg.eval(probe as f64 / 4000.0)));
+                    }
+                    assert!(
+                        (nearest - d).abs() <= 1e-3,
+                        "offset at {s} of {first}, {second} is {nearest} from the curve"
+                    );
+                }
             }
         }
     }

@@ -7,6 +7,7 @@
 #![forbid(unsafe_code)]
 
 pub mod fill;
+pub mod stroke;
 
 use std::path::{Path, PathBuf};
 

@@ -37,6 +37,7 @@ use otf_2d_engine_geom::{Affine, PathVerb, Point, Vec2};
 use crate::euler::{Density, EulerSeg};
 use crate::math::{abs, atan2, ceil, sqrt};
 use crate::segment::Segment;
+use crate::stroke::{StrokeSpec, Stroker, Vertex};
 
 /// Default flattening error, in device pixels.
 ///
@@ -51,7 +52,7 @@ pub const DEFAULT_TOLERANCE: f64 = 0.25;
 /// value is just over π/4, which is what the cubic approximation of a quarter
 /// circle asks for — the most common curve in the world, and one that would
 /// otherwise be split in half for nothing.
-const MAX_TANGENT_ANGLE: f64 = 0.9;
+pub(crate) const MAX_TANGENT_ANGLE: f64 = 0.9;
 
 /// What [`spiral_error`] multiplies its measurement by.
 ///
@@ -91,8 +92,8 @@ const MAX_SPLIT_DEPTH: u32 = 10;
 
 /// One fitted spiral and the segment budget it asks for.
 #[derive(Debug, Clone, Copy)]
-struct Spiral {
-    seg: EulerSeg,
+pub(crate) struct Spiral {
+    pub(crate) seg: EulerSeg,
     density: Density,
     /// Segments this spiral needs, before the curve's total is rounded.
     value: f64,
@@ -114,6 +115,10 @@ pub struct Flattener {
     current: Point,
     current_device: Point,
     transform: Affine,
+    /// Last, because a fill never touches it: the buffers a stroke needs are
+    /// several times the size of everything above them, and in front of them
+    /// they push the fields that *are* read on every emitted point along.
+    stroker: Stroker,
 }
 
 impl Flattener {
@@ -141,7 +146,9 @@ impl Flattener {
 
     /// Bytes currently held.
     pub fn memory_usage(&self) -> usize {
-        core::mem::size_of_val(&self.segments[..]) + core::mem::size_of_val(&self.spirals[..])
+        self.stroker.memory_usage()
+            + core::mem::size_of_val(&self.segments[..])
+            + core::mem::size_of_val(&self.spirals[..])
     }
 
     /// Appends one path, transformed into device space.
@@ -151,23 +158,66 @@ impl Flattener {
     ///
     /// Fills are implicitly closed: an unclosed subpath still gets its closing
     /// edge, because a fill is defined by winding and an open outline has none.
-    pub fn add_path(&mut self, verbs: &[u8], points: &[f64], transform: Affine, tolerance: f64) {
+    /// Appends the outline of the stroke of one path.
+    ///
+    /// The outline is built in path coordinates and transformed on the way
+    /// out, exactly as a fill is, so a stroke is as wide as the transform
+    /// makes it: a path scaled twice over is stroked twice as thick, and one
+    /// scaled unevenly is stroked by an ellipse. That is what a stroke *is* —
+    /// the shape swept by a pen carried along the path — and it is what SVG
+    /// and CSS mean by it too.
+    pub fn add_stroke(
+        &mut self,
+        verbs: &[u8],
+        points: &[f64],
+        transform: Affine,
+        tolerance: f64,
+        spec: &StrokeSpec,
+    ) {
+        let local_tolerance = self.begin(transform, tolerance);
+        // Out of `self` while the outline is being built, so that emitting can
+        // borrow the flattener and the stroker's buffers at the same time.
+        let mut stroker = core::mem::take(&mut self.stroker);
+        stroker.expand(
+            verbs,
+            points,
+            spec,
+            local_tolerance,
+            &mut |vertex| match vertex {
+                Vertex::Start(point) => {
+                    self.close_subpath();
+                    self.start = Some(point);
+                    self.move_to(point);
+                }
+                Vertex::Line(point) => self.line_to(point),
+                Vertex::Close => self.close_subpath(),
+            },
+        );
+        self.close_subpath();
+        self.stroker = stroker;
+    }
+
+    /// Sets the transform and returns the tolerance in path coordinates.
+    fn begin(&mut self, transform: Affine, tolerance: f64) -> f64 {
         let device_tolerance = if tolerance.is_finite() && tolerance > 0.0 {
             tolerance
         } else {
             DEFAULT_TOLERANCE
         };
         let scale = transform.max_scale();
+        self.transform = transform;
         // A degenerate transform collapses the path to a point or a line, and
         // no amount of flattening changes what it looks like: one segment per
         // curve is exactly right, and an infinite tolerance says so.
-        let local_tolerance = if scale.is_finite() && scale > 0.0 {
+        if scale.is_finite() && scale > 0.0 {
             device_tolerance / scale
         } else {
             f64::INFINITY
-        };
-        self.transform = transform;
+        }
+    }
 
+    pub fn add_path(&mut self, verbs: &[u8], points: &[f64], transform: Affine, tolerance: f64) {
+        let local_tolerance = self.begin(transform, tolerance);
         let mut cursor = 0usize;
         let point = |at: usize| -> Option<Point> {
             let x = *points.get(at * 2)?;
@@ -273,14 +323,7 @@ impl Flattener {
         // and the chord-placement model rely on that, so the splits come first
         // and every piece boundary is a vertex of the output.
         let mut bounds = [0.0f64; 4];
-        let mut piece_count = 1;
-        for root in curvature_roots(&curve) {
-            if root > bounds[piece_count - 1] + PIECE_EPSILON && root < 1.0 - PIECE_EPSILON {
-                bounds[piece_count] = root;
-                piece_count += 1;
-            }
-        }
-        bounds[piece_count] = 1.0;
+        let piece_count = inflection_cuts(&curve, &mut bounds) - 1;
 
         // Moved out of `self` so that emitting — which needs the whole
         // flattener — and reading the spirals do not borrow it at once. The
@@ -327,6 +370,25 @@ impl Flattener {
     }
 }
 
+/// Cuts `[0, 1]` where the curvature vanishes, and returns how many boundaries
+/// came out — one more than the number of pieces.
+///
+/// Between inflections the curvature keeps its sign. Both the spiral fit and
+/// the chord-placement model rely on that, so the splits come first and every
+/// piece boundary is a vertex of the output.
+pub(crate) fn inflection_cuts(curve: &[Point; 4], out: &mut [f64; 4]) -> usize {
+    let mut count = 1;
+    out[0] = 0.0;
+    for root in curvature_roots(curve) {
+        if root > out[count - 1] + PIECE_EPSILON && root < 1.0 - PIECE_EPSILON && count < 3 {
+            out[count] = root;
+            count += 1;
+        }
+    }
+    out[count] = 1.0;
+    count + 1
+}
+
 /// Fits spirals to one inflection-free piece and appends them to `out`.
 ///
 /// The search is the usual halving with a step back up, with two things on top
@@ -334,7 +396,7 @@ impl Flattener {
 /// ([`worth_halving`]), and when it is not kept, the error just measured says
 /// how many halvings it is short by rather than costing a rejected fit at
 /// every level on the way down ([`shortfall_halvings`]).
-fn fit_spirals(curve: &[Point; 4], tolerance: f64, out: &mut Vec<Spiral>) {
+pub(crate) fn fit_spirals(curve: &[Point; 4], tolerance: f64, out: &mut Vec<Spiral>) {
     let fit_tolerance = tolerance * FIT_BUDGET;
     let mut start_index = 0u32;
     let mut depth = 0u32;
@@ -359,18 +421,16 @@ fn fit_spirals(curve: &[Point; 4], tolerance: f64, out: &mut Vec<Spiral>) {
         };
         let accept = match fitted {
             Some((seg, error)) => error <= fit_tolerance || !worth_halving(&seg, error, tolerance),
-            None => true,
+            // A piece whose two ends are the same point has no chord to fit a
+            // spiral to, and yet it is not nothing: a cubic that closes on
+            // itself is a loop, and the loop is the shape. Halving it is what
+            // finds the two halves that do have chords. Only when the bow has
+            // gone with the chord is the piece really a point.
+            None => bow <= fit_tolerance,
         };
         if accept || depth >= MAX_SPLIT_DEPTH {
             if let Some((seg, error)) = fitted {
-                let line_tolerance = line_budget(tolerance, error);
-                let density = Density::new(&seg, line_tolerance);
-                out.push(Spiral {
-                    seg,
-                    density,
-                    value: density.value(),
-                    line_tolerance,
-                });
+                out.push(Spiral::new(seg, tolerance, error));
             }
             start_index += 1;
             while depth > 0 && start_index.is_multiple_of(2) {
@@ -413,7 +473,7 @@ fn shortfall_halvings(error: f64, target: f64) -> u32 {
 /// The two errors add in the worst case — a fit that bulges one way and a
 /// chord that cuts the same way — so the line placement gets what the fit did
 /// not spend, and no more.
-fn line_budget(tolerance: f64, error: f64) -> f64 {
+pub(crate) fn line_budget(tolerance: f64, error: f64) -> f64 {
     (tolerance - error).max(tolerance * LINE_BUDGET_FLOOR)
 }
 
@@ -449,7 +509,7 @@ fn worth_halving(seg: &EulerSeg, error: f64, tolerance: f64) -> bool {
 
 /// The largest share of the tolerance a fit may take and still be considered
 /// on its segment count rather than halved outright.
-const MAX_FIT_SHARE: f64 = 0.5;
+pub(crate) const MAX_FIT_SHARE: f64 = 0.5;
 
 /// What share of a piece's own segment count halving has to save before it is
 /// worth the fits it costs.
@@ -459,6 +519,34 @@ const MAX_FIT_SHARE: f64 = 0.5;
 /// recursive subdivision and the number of individual curves it loses on are
 /// better than at any tighter setting.
 const SPLIT_GAIN_FRACTION: f64 = 0.10;
+
+impl Spiral {
+    /// A spiral to be cut into chords, with `error` already spent on getting
+    /// it there.
+    pub(crate) fn new(seg: EulerSeg, tolerance: f64, error: f64) -> Spiral {
+        let line_tolerance = line_budget(tolerance, error);
+        let density = Density::new(&seg, line_tolerance);
+        Spiral {
+            seg,
+            density,
+            value: density.value(),
+            line_tolerance,
+        }
+    }
+}
+
+/// Cuts a run of spirals into chords, and calls `visit` with each interior
+/// vertex. The ends are the caller's, who knows them exactly.
+pub(crate) fn place_chords(spirals: &[Spiral], mut visit: impl FnMut(Point)) {
+    let total: f64 = spirals.iter().map(|spiral| spiral.value).sum();
+    if !total.is_finite() || total <= 0.0 {
+        return;
+    }
+    let count = tighten(spirals, ceil(total - COUNT_EPSILON).max(1.0));
+    walk(spirals, count, |index, at| {
+        visit(spirals[index].seg.eval(at))
+    });
+}
 
 /// Calls `visit` with the spiral and parameter of every interior vertex, given
 /// that the run of spirals is to be cut into `count` line segments.
@@ -1040,7 +1128,7 @@ fn eval_cubic(curve: &[Point; 4], t: f64) -> Point {
 }
 
 /// The part of `curve` over `[t0, t1]`, as a cubic in its own right.
-fn sub_cubic(curve: &[Point; 4], t0: f64, t1: f64) -> [Point; 4] {
+pub(crate) fn sub_cubic(curve: &[Point; 4], t0: f64, t1: f64) -> [Point; 4] {
     // The whole curve is the commonest piece there is — a fit that is accepted
     // where it stands never asks for any other — and cutting it at both ends
     // for nothing is two de Casteljau passes that give the curve back.

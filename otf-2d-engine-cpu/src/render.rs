@@ -7,10 +7,12 @@ use otf_2d_engine_color::{Color, ColorSpace};
 use otf_2d_engine_geom::{Affine, Rect};
 use otf_2d_engine_raster::{
     Binner, DEFAULT_TOLERANCE, FineTables, Flattener, Segment, Simd, SolidPaint, Striper,
-    SurfaceSize, TargetMut, ThreadPool, TileGeometry, clip_segments, render_solid_paint,
+    StrokeSpec, SurfaceSize, TargetMut, ThreadPool, TileGeometry, clip_segments,
+    render_solid_paint,
 };
 use otf_2d_engine_scene::{
-    PaintKind, ResolveParams, ResolvedKind, Resolver, Scene, color_from_record,
+    Cap, FillRule, JOIN_BEVEL, JOIN_ROUND, Join, PaintKind, ResolveParams, ResolvedKind, Resolver,
+    Scene, StrokeDesc, color_from_record,
 };
 
 /// Which precision the fine stage works in.
@@ -196,9 +198,22 @@ impl CpuRenderer {
         stats.draws_culled = resolved.stats().culled;
 
         for draw in resolved.draws() {
-            let ResolvedKind::Fill { rule, path } = draw.kind else {
-                // Strokes, glyphs, images and layers arrive in M3 and M4. A
-                // draw this build cannot honour is counted, never guessed at.
+            let geometry = match draw.kind {
+                ResolvedKind::Fill { rule, path } => Some((rule, path, None)),
+                // A stroke is a fill of its own outline, and the outline is
+                // wound so that non-zero is the only rule that describes it:
+                // the two sides of a bend overlap, and even-odd would punch
+                // the overlap back out.
+                ResolvedKind::Stroke { style, path } => resolved
+                    .scene()
+                    .strokes()
+                    .get(style.index() as usize)
+                    .map(|desc| (FillRule::NonZero, path, Some(desc))),
+                _ => None,
+            };
+            let Some((rule, path, stroke)) = geometry else {
+                // Glyphs, images and layers arrive in M4. A draw this build
+                // cannot honour is counted, never guessed at.
                 if !matches!(
                     draw.kind,
                     ResolvedKind::BeginLayer { .. } | ResolvedKind::EndLayer { .. }
@@ -218,12 +233,21 @@ impl CpuRenderer {
 
             // Stage 3.
             self.flattener.reset();
-            self.flattener.add_path(
-                view.raw_verbs(),
-                view.raw_points(),
-                draw.transform,
-                params.tolerance,
-            );
+            match stroke {
+                None => self.flattener.add_path(
+                    view.raw_verbs(),
+                    view.raw_points(),
+                    draw.transform,
+                    params.tolerance,
+                ),
+                Some(desc) => self.flattener.add_stroke(
+                    view.raw_verbs(),
+                    view.raw_points(),
+                    draw.transform,
+                    params.tolerance,
+                    &stroke_spec(desc),
+                ),
+            }
 
             // The clip is a rectangle, so clipping is exact: fold the geometry
             // into the rect and the antialiasing of its edges falls out of the
@@ -275,6 +299,34 @@ impl CpuRenderer {
 
 /// The solid paint a fill uses, or `None` when the paint is one this build
 /// does not implement yet.
+/// The stroke style, as stage 3 asks for it.
+///
+/// The scene stores the discriminants flat, so this is where they become the
+/// types again; an unknown one is a round join, which is the shape that is
+/// never wrong for any corner.
+fn stroke_spec(desc: &StrokeDesc) -> StrokeSpec {
+    StrokeSpec {
+        width: desc.width as f64,
+        join: match desc.join {
+            JOIN_BEVEL => Join::Bevel,
+            JOIN_ROUND => Join::Round,
+            _ => Join::Miter {
+                limit: desc.miter_limit,
+            },
+        },
+        start_cap: cap_from(desc.start_cap),
+        end_cap: cap_from(desc.end_cap),
+    }
+}
+
+fn cap_from(discriminant: u32) -> Cap {
+    match discriminant {
+        1 => Cap::Round,
+        2 => Cap::Square,
+        _ => Cap::Butt,
+    }
+}
+
 fn solid_paint(
     resolved: &otf_2d_engine_scene::ResolvedScene<'_>,
     draw: &otf_2d_engine_scene::ResolvedDraw,

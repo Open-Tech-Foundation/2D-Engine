@@ -19,6 +19,7 @@ mod math;
 mod pixels;
 mod segment;
 mod strips;
+mod stroke;
 mod threads;
 
 pub use binning::{BinStats, Binner, SurfaceSize, TileBins, TileEntry, TileGeometry};
@@ -30,4 +31,5 @@ pub use flatten::{DEFAULT_TOLERANCE, Flattener, clip_segment, clip_segments};
 pub use pixels::{PixelFormat, TargetError, TargetMut, encode_color};
 pub use segment::Segment;
 pub use strips::{Strip, StripKind, StripStats, Striper, Strips};
+pub use stroke::StrokeSpec;
 pub use threads::{ChunkTask, SerialPool, ThreadPool};

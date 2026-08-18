@@ -220,6 +220,37 @@ fn deviation_never_exceeds_the_tolerance() {
     );
 }
 
+/// A cubic whose ends meet is a loop, and a loop is a shape. It has no chord
+/// for a spiral to be fitted to, which is a reason to halve it and not a
+/// reason to drop it.
+#[test]
+fn a_curve_that_closes_on_itself_is_still_flattened() {
+    let mut builder = PathBuilder::new();
+    builder.move_to(Point::new(48.0, 48.0));
+    builder.curve_to(
+        Point::new(84.0, 12.0),
+        Point::new(96.0, 60.0),
+        Point::new(48.0, 48.0),
+    );
+    let path = builder.build();
+    let segments = flatten(&path, Affine::IDENTITY, 0.25);
+    assert!(
+        segments.len() > 4,
+        "a loop flattened to {} segments",
+        segments.len()
+    );
+    // The loop encloses real area, and the polyline has to enclose it too.
+    let enclosed: f64 = segments
+        .iter()
+        .map(|s| 0.5 * (s.x0 as f64 + s.x1 as f64) * (s.y1 as f64 - s.y0 as f64))
+        .sum::<f64>()
+        .abs();
+    assert!(
+        enclosed > 100.0,
+        "a loop flattened to something enclosing only {enclosed}"
+    );
+}
+
 /// T3.1: fewer segments than recursive subdivision at the same tolerance.
 #[test]
 fn uses_fewer_segments_than_recursive_subdivision() {

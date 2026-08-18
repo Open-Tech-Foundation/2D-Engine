@@ -9,7 +9,7 @@ mod support;
 
 use otf_2d_engine_color::{BlendMode, Color, srgb8_to_linear};
 use otf_2d_engine_geom::{Affine, PathBuilder, Point, Vec2};
-use otf_2d_engine_scene::{FillRule, SceneBuilder};
+use otf_2d_engine_scene::{Cap, FillRule, SceneBuilder, StrokeStyle};
 use otf_2d_engine_testing::image::Image;
 
 use support::{accent, ink, polygon, rect, render_case, render_case_with_tolerance, star};
@@ -631,4 +631,162 @@ fn the_render_is_reproducible() {
         assert_eq!(again.data(), once.data());
     }
     let _ = Color::TRANSPARENT;
+}
+
+// ------------------------------------------------------------------ strokes
+
+/// A stroke is the region within half the width of the path. Everything below
+/// is that sentence turned into a number.
+fn stroke_image(width: f64, style: StrokeStyle, build: impl Fn(&mut PathBuilder)) -> Image {
+    render_case(SIZE, SIZE, |sb: &mut SceneBuilder<'_>| {
+        let mut builder = PathBuilder::new();
+        build(&mut builder);
+        let _ = sb.stroke(
+            &StrokeStyle {
+                width: width as f32,
+                ..style
+            },
+            Affine::IDENTITY,
+            &ink(),
+            &builder.build(),
+        );
+    })
+    .expect("render")
+}
+
+#[test]
+fn a_stroked_line_covers_exactly_its_rectangle() {
+    // Pixel-aligned on every side, so the answer is whole pixels and any
+    // disagreement is a real one rather than antialiasing.
+    let image = stroke_image(8.0, StrokeStyle::default(), |b| {
+        b.move_to(Point::new(20.0, 40.0));
+        b.line_to(Point::new(76.0, 40.0));
+    });
+    assert!(
+        (area(&image) - 56.0 * 8.0).abs() < 1e-6,
+        "a 56 by 8 stroke covered {}",
+        area(&image)
+    );
+    assert!(white(&image, 20, 35), "the stroke reached above its width");
+    assert!(!white(&image, 20, 36), "the stroke fell short of its width");
+    assert!(white(&image, 19, 40), "the stroke ran past its butt cap");
+}
+
+#[test]
+fn a_stroke_that_doubles_back_covers_its_width_once() {
+    // Out and back along the same line. Painted twice, it would come to twice
+    // the area; the fill rule is what makes it come to once.
+    let image = stroke_image(10.0, StrokeStyle::default(), |b| {
+        b.move_to(Point::new(20.0, 48.0));
+        b.line_to(Point::new(76.0, 48.0));
+        b.line_to(Point::new(20.0, 48.0));
+    });
+    assert!(
+        (area(&image) - 56.0 * 10.0).abs() < 1e-6,
+        "a stroke doubled back covered {}, wanted {}",
+        area(&image),
+        560.0
+    );
+}
+
+#[test]
+fn a_self_crossing_stroke_covers_the_union_of_its_arms() {
+    // A cross drawn without lifting the pen: down, back up, across. Where the
+    // arms meet, the stroke covers the square once.
+    // Whole pixels on every edge, so the answer is exact rather than a
+    // quantised approximation of the antialiasing.
+    let width = 10.0;
+    let image = stroke_image(width, StrokeStyle::default(), |b| {
+        b.move_to(Point::new(48.0, 20.0));
+        b.line_to(Point::new(48.0, 76.0));
+        b.move_to(Point::new(20.0, 48.0));
+        b.line_to(Point::new(76.0, 48.0));
+    });
+    let expected = 2.0 * 56.0 * width - width * width;
+    assert!(
+        (area(&image) - expected).abs() < 1e-6,
+        "a crossing stroke covered {}, wanted {expected}",
+        area(&image)
+    );
+}
+
+#[test]
+fn a_stroked_circle_covers_the_ring_it_traces() {
+    let radius = 30.0;
+    let width = 8.0;
+    let image = stroke_image(width, StrokeStyle::default(), |b| {
+        b.circle(Point::new(48.0, 48.0), radius);
+    });
+    let expected = core::f64::consts::TAU * radius * width;
+    // Both edges of the ring are flattened, and each falls inside its own
+    // curve, so the shortfall is the bound twice over.
+    let bound = 2.0 * flattening_deficit(core::f64::consts::TAU * (radius + 0.5 * width), 0.25);
+    let deficit = expected - area(&image);
+    assert!(
+        deficit >= 0.0 && deficit <= bound,
+        "a stroked circle covered {} against {expected}, short by {deficit} of {bound}",
+        area(&image)
+    );
+}
+
+#[test]
+fn a_round_cap_adds_half_a_disc_at_each_end() {
+    let plain = area(&stroke_image(10.0, StrokeStyle::default(), |b| {
+        b.move_to(Point::new(24.0, 48.0));
+        b.line_to(Point::new(72.0, 48.0));
+    }));
+    let rounded = area(&stroke_image(
+        10.0,
+        StrokeStyle {
+            start_cap: Cap::Round,
+            end_cap: Cap::Round,
+            ..StrokeStyle::default()
+        },
+        |b| {
+            b.move_to(Point::new(24.0, 48.0));
+            b.line_to(Point::new(72.0, 48.0));
+        },
+    ));
+    let expected = core::f64::consts::PI * 25.0;
+    let bound = flattening_deficit(core::f64::consts::TAU * 5.0, 0.25);
+    let added = rounded - plain;
+    assert!(
+        expected - added >= 0.0 && expected - added <= bound,
+        "round caps added {added}, wanted {expected} within {bound}"
+    );
+}
+
+#[test]
+fn a_stroke_scales_with_its_transform() {
+    let image = render_case(SIZE, SIZE, |sb: &mut SceneBuilder<'_>| {
+        let mut builder = PathBuilder::new();
+        builder.move_to(Point::new(10.0, 24.0));
+        builder.line_to(Point::new(38.0, 24.0));
+        let _ = sb.stroke(
+            &StrokeStyle::new(4.0),
+            Affine::scale(2.0),
+            &ink(),
+            &builder.build(),
+        );
+    })
+    .expect("render");
+    // Twice as long and twice as wide.
+    assert!(
+        (area(&image) - 56.0 * 8.0).abs() < 1e-6,
+        "a doubled stroke covered {}",
+        area(&image)
+    );
+}
+
+#[test]
+fn a_stroke_with_no_width_paints_nothing() {
+    let image = stroke_image(0.0, StrokeStyle::default(), |b| {
+        b.move_to(Point::new(20.0, 48.0));
+        b.line_to(Point::new(76.0, 48.0));
+    });
+    assert!(
+        area(&image) == 0.0,
+        "a zero-width stroke covered {}",
+        area(&image)
+    );
 }

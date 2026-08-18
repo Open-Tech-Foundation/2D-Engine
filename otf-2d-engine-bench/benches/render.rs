@@ -12,12 +12,13 @@
 use std::process::ExitCode;
 
 use criterion::Criterion;
-use otf_2d_engine_bench::{Registry, baseline_path, fill, repo_root, results_path};
+use otf_2d_engine_bench::{Registry, baseline_path, fill, repo_root, results_path, stroke};
 use otf_2d_engine_testing::bench::{BenchResults, threshold_from_env};
 
 /// Every benchmark in the corpus. Add here and nowhere else.
 fn register_all(criterion: &mut Criterion, registry: &mut Registry) {
     fill::register(criterion, registry);
+    stroke::register(criterion, registry);
     // M3 and M4 add geometry, paint and text groups here.
 }
 
