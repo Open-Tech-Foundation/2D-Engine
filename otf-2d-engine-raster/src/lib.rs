@@ -12,6 +12,7 @@
 extern crate alloc;
 
 mod binning;
+mod euler;
 mod fine;
 mod flatten;
 mod math;

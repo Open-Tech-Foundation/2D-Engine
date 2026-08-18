@@ -254,6 +254,96 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the surface for every draw. 960 small rounded rects at 1080p went from
   41.2 ms to 37.8 ms (D-41).
 
+- **T3.1** — Stage 3 is now Euler-spiral flattening, replacing the M2
+  uniform-step stopgap (D-39). `otf-2d-engine-raster::euler` carries the
+  mathematics: the Euler integral `I(k0,k1) = ∫exp(i(k0u + k1u²/2))du` over
+  `u ∈ [-½,½]` is a power series whose rational coefficients are computed
+  exactly at compile time by a `const fn`, with the truncation order chosen per
+  call from the segment's total turn (D-42). A spiral whose curvature does not
+  change is a circular arc, and there the whole table collapses to
+  `sin(k0/2)/(k0/2)` — one Horner pass down a single column, four times faster
+  than walking the series, and it is the case most of a path is made of (D-51).
+  The geometric-Hermite fit takes `k0 = θ0 + θ1` exactly and solves
+  `dθ/2 - k1/8 + arg I = 0` for `k1` by **reverting that equation into its own
+  series** rather than searching: `k1 = a₁(k0²)·T + a₃(k0²)·T³ + a₅(k0²)·T⁵`
+  with `T = dθ/2`, every coefficient an exact rational from the same expansion
+  (D-48). It lands within `1e-5` of the root, and its derivative — free, being
+  the same series — gives the one Newton step that takes it the rest of the way.
+  Chords are then placed by a closed-form **segment-density** integral rather
+  than by subdivision: `D(u) = max(A√|k|, B|k|, C)` with `A = √(L/8·tol)`,
+  `B = 1/MAX_TURN` and `C = ∛(L|k1|/125·tol)` — an error term, a turn cap so a
+  tight arc never gets a chord that swings too far, and a curvature-variation
+  term for a spiral whose curvature changes fast enough that the local error
+  model would under-count (D-44). Both the integral and its inverse are closed
+  form, so a path is one walk with one rounding.
+  `flatten.rs` drives it. A cubic is first split at the roots of
+  `cross(C', C'')`, so an inflection or cusp lands on a piece boundary instead
+  of inside a spiral that cannot represent it (D-43). Each piece is fitted by
+  halving with step-back-up, and how far a spiral strays from its cubic is read
+  as a **graph over their shared chord**: both curves run one way along it, so
+  the point to compare against is the one directly across, found by two Newton
+  steps on a scalar (D-45). Where that assumption fails — a piece that doubles
+  back over its own chord, which can loop out and return while every sample
+  reads clean — the reading is refused outright and the piece halved (D-49).
+  A fit that spends more than a tenth of the tolerance is **not** split on that
+  ground alone: what a split is worth is a number this stage can read, since
+  the density integral *is* the segment count, so it is priced instead
+  (D-50). A quarter of a large circle is the case that makes it matter — no
+  spiral matches that cubic to a tenth of a pixel, because the cubic is not
+  a circular arc and the gap grows with the radius — and pricing the split
+  rather than assuming it takes that scene's flattening from 5.2 ms to 1.0 ms.
+  Finally, the placement is **measured rather than budgeted for**: the density
+  is a sagitta model, short by up to a tenth on one spiral and without limit
+  across several, so instead of holding a fixed share of the tolerance back on
+  every curve, `chord_deviation` reads what the chords actually did and a run
+  that misses is cut more finely (D-46). Inside a single spiral the curvature
+  is monotone, so only the two end chords need reading.
+  Flattening happens in local space against `tolerance / transform.max_scale()`
+  and the points are transformed at emit, so a scaled path costs what its
+  device-space size asks for and a rotation changes the segment count not at
+  all. Both are asserted.
+  **Measured against the recursive-subdivision reference** over 400 random
+  cubics: **9235 segments against 10895**, 15.2% fewer, with recursive
+  subdivision ahead on 89 of the 400 individual curves. The reference
+  implementation is kept as test-only code rather than deleted, because it is
+  what that comparison is against (D-47).
+  Eleven integration tests cover deviation against the tolerance under dense
+  sampling, transform scale and rotation, degenerate curves and degenerate
+  transforms, quadratic/cubic equivalence, a circle's segment count against
+  what its geometry asks for, and cursor advancement for every verb. Eleven
+  unit tests check the series against Simpson quadrature, the adaptive order
+  against the full one, the fit against the angles it was given, endpoint
+  exactness, a symmetric spiral against a circular arc, arc length against
+  `chord/ch`, the density inverse and the tolerance it delivers — and three
+  measure the fit-error estimate itself against densely sampled truth, over
+  random Béziers, over arcs of every turn and radius, and over the doubling-back
+  piece that the graph reading has to refuse.
+  The **eight curved golden references were re-blessed**, with evidence: the
+  rendered coverage area was measured against analytic truth for each (πr² for
+  the circle, πab for the ellipse, and the Green's-theorem area of the outline
+  for the Bézier shapes). Area deficits, in square pixels, M2 → T3.1, against
+  the `2/3·perimeter·tolerance` bound: `quadratic_leaf` 63.0 → 24.2 (bound
+  36.8), a marked improvement; `circle` 24.9 → 34.0 (bound 37.7); `ellipse`
+  17.1 → 22.9 (bound 33.2); `cubic_blob` 22.0 → 27.9 (bound 34.4). The shapes
+  with no analytic closed form moved by 0.005–0.023% of their area. The
+  direction is what the change predicts and the tolerance permits: uniform
+  subdivision over-tessellated, landing nearer the truth than it was asked to
+  while paying for it in segments, and Euler-spiral flattening spends the
+  tolerance it was given and no more. Every deficit stays inside the bound, and
+  the 19 analytic correctness tests and the five `tiny-skia` reference
+  comparisons pass unchanged.
+  A `varied_curvature_1080p` benchmark case was added — 48 ribbons of 12 cubics
+  each, swaying and pinching — so the corpus holds content whose curvature
+  actually varies along a curve rather than only circular arcs, which circles
+  and rounded corners do not. It is also where this stage is most expensive:
+  **7277 segments against uniform subdivision's 10427, a 30% reduction, for a
+  frame of 19.1 ms against 11.8 ms**. Curvature that varies means asymmetric
+  fits and eight spirals to a cubic, and the fits are the whole difference —
+  the segments saved do not pay for them on this scene, though they do on every
+  other. Left as it stands and recorded here: the segment count is what T3.1 is
+  measured on and what stages 4 to 6 and everything after them pay for, and a
+  cheaper fit is a change to the fit, not to what it decides.
+
 ### Changed
 
 - `ci/invariants.sh` no longer greps comment lines. A rule whose own

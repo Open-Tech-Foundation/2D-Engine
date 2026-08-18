@@ -85,15 +85,59 @@ fn circles() -> Scene {
     scene_of(paths)
 }
 
+/// Ribbons whose curvature varies along their length, which is where
+/// flattening has something to decide.
+///
+/// Circles and rounded corners are constant-curvature: every flattener, however
+/// naive, places the same number of chords along them. A curve that is nearly
+/// straight in places and tight in others is where an Euler-spiral flattener
+/// spends segments where they are needed and skips them where they are not
+/// (T3.1), and it is the shape most real artwork and glyph outlines are made
+/// of.
+fn varied_curvature() -> Scene {
+    let mut paths = Vec::new();
+    for index in 0..48 {
+        let phase = index as f64 * 0.37;
+        let top = 20.0 + (index % 12) as f64 * 85.0;
+        let left = 20.0 + (index / 12) as f64 * 470.0;
+        let mut builder = PathBuilder::new();
+        builder.move_to(Point::new(left, top + 30.0));
+        for step in 0..6 {
+            let x = left + step as f64 * 75.0;
+            let sway = (phase + step as f64 * 1.1).sin() * 26.0;
+            let pinch = (phase + step as f64 * 0.7).cos() * 22.0;
+            builder.curve_to(
+                Point::new(x + 18.0, top + 30.0 + sway * 2.4),
+                Point::new(x + 52.0, top + 30.0 - pinch * 2.1),
+                Point::new(x + 75.0, top + 30.0 + sway * 0.5),
+            );
+        }
+        for step in (0..6).rev() {
+            let x = left + step as f64 * 75.0;
+            let sway = (phase + step as f64 * 1.1).sin() * 26.0;
+            let pinch = (phase + step as f64 * 0.7).cos() * 22.0;
+            builder.curve_to(
+                Point::new(x + 52.0, top + 48.0 - pinch * 2.1),
+                Point::new(x + 18.0, top + 48.0 + sway * 2.4),
+                Point::new(x, top + 48.0 + sway * 0.5),
+            );
+        }
+        builder.close();
+        paths.push((builder.build(), FillRule::NonZero));
+    }
+    scene_of(paths)
+}
+
 /// Registers the group.
 pub fn register(criterion: &mut Criterion, registry: &mut Registry) {
     /// A named scene constructor.
     type Case = (&'static str, fn() -> Scene);
 
-    let cases: [Case; 3] = [
+    let cases: [Case; 4] = [
         ("solid_rect_1080p", full_surface),
         ("rounded_rects_1080p", many_shapes),
         ("circles_1080p", circles),
+        ("varied_curvature_1080p", varied_curvature),
     ];
 
     let mut group = criterion.benchmark_group("fill");
